@@ -1,0 +1,19 @@
+[project]
+name = "quant-assistant"
+version = "0.1.0"
+description = "A股量化盯盘助手:盘中监控、选股、回测,辅助人工决策"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.0",
+    "akshare>=1.18",
+]
+
+[project.optional-dependencies]
+desktop = [
+    "pywebview>=6.0,<7",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"

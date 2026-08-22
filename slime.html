@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>捏史莱姆</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;touch-action:none}
+  body{
+    background:radial-gradient(120% 90% at 50% 0%, #2a3550 0%, #171d2e 55%, #0e121c 100%);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    user-select:none;
+  }
+  canvas{display:block;width:100%;height:100%}
+  .hint{
+    position:fixed;left:0;right:0;top:max(18px,env(safe-area-inset-top));
+    text-align:center;color:#fff;opacity:.34;font-size:13px;letter-spacing:.1em;
+    pointer-events:none;transition:opacity .6s;
+  }
+  .hint.gone{opacity:0}
+  .bar{
+    position:fixed;left:0;right:0;bottom:max(20px,env(safe-area-inset-bottom));
+    display:flex;justify-content:center;align-items:center;gap:13px;
+  }
+  .sw{
+    width:30px;height:30px;border-radius:50%;border:2px solid rgba(255,255,255,.22);
+    cursor:pointer;transition:transform .18s ease,border-color .18s ease;
+  }
+  .sw.on{border-color:#fff;transform:scale(1.22)}
+  .rs{
+    width:30px;height:30px;border-radius:50%;border:2px solid rgba(255,255,255,.22);
+    background:rgba(255,255,255,.06);color:#fff;font-size:15px;line-height:1;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .rs:active{transform:scale(.9)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hint" id="hint">拖一拖 · 用力拉长会断开 · 撞一起会融合</div>
+<div class="bar" id="bar"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d');
+  var W = 0, H = 0, DPR = 1;
+
+  // ---------- 参数 ----------
+  var N = 56;              // 每只史莱姆的边缘粒子数
+  var GRAVITY = 1600;
+  var DRAG = 0.994;
+  var PRESSURE_K = 19000;  // 内压强度
+  var SPRING_K = 0.34;     // 周长弹簧刚度
+  var MEMORY_K = 0.008;    // 形状记忆（太大就变成硬球了）
+  var ITER = 5;
+  var SUBSTEPS = 3;
+  var RESTITUTION = 0.22;
+  var FRICTION = 0.65;     // 接触面摩擦（越小越黏，太滑会导致横向拉不断，整只跟着走）
+  var GRAB_R = 92;         // 抓取半径上限
+  var GRAB_FACTOR = 0.85;  // 实际抓取半径 = R * 这个值（捏住多大一块）
+  var GRAB_K = 0.45;       // 跟手强度，越大越像刚体拖拽，越小越能拉出细丝
+  var PAD = 2;
+  var SLEEP = 0.06;
+
+  // 分裂 / 融合
+  var MAX_BLOBS = 8;
+  var MIN_SPLIT_R = 34;    // 太小就不再分裂
+  var NECK_RATIO = 0.50;   // 腰部窄于 R 的一半才算断
+  var STRETCH_RATIO = 2.9; // 且长轴要拉到 R 的 2.9 倍
+  var MIN_ARC = 9;         // 断开后两半各自至少要有这么多粒子
+  var POP = 0.8;           // 断开瞬间的弹开速度（px/子步）
+  var MERGE_RATIO = 0.62;  // 质心距离小于 (R1+R2) 的这个比例就融合
+  var NO_MERGE_T = 0.55;   // 刚断开后的不融合保护期（秒）
+
+  var R0 = 90;             // 基准半径
+  var blobs = [];
+  var grabs = [];
+  var pointer = { x: 0, y: 0, down: false };
+
+  // ---------- 配色 ----------
+  var THEMES = [
+    { name: '抹茶',   hi: '#d8ff8a', mid: '#7bdc45', low: '#2f9c2c', glow: 'rgba(140,255,120,.30)' },
+    { name: '水蜜桃', hi: '#ffd6e6', mid: '#ff87b4', low: '#d94b86', glow: 'rgba(255,140,190,.30)' },
+    { name: '海盐',   hi: '#c8f4ff', mid: '#59c8f5', low: '#2273c8', glow: 'rgba(110,205,255,.30)' },
+    { name: '葡萄',   hi: '#e2ccff', mid: '#a274f5', low: '#6134c0', glow: 'rgba(180,140,255,.30)' },
+    { name: '芒果',   hi: '#ffe9a8', mid: '#ffb43d', low: '#d97706', glow: 'rgba(255,190,90,.30)' }
+  ];
+  var theme = THEMES[0];
+
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+
+  // 静止形状（单位圆）。形状记忆要靠它把粒子按角度归位，
+  // 只按半径拉是不够的：折成一条线时半径全对、面积却是 0，且是个稳定不动点。
+  var QU = [];
+  for (var qi = 0; qi < N; qi++) {
+    var qa = qi / N * Math.PI * 2;
+    QU.push({ x: Math.cos(qa), y: Math.sin(qa) });
+  }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+    W = canvas.clientWidth;
+    H = canvas.clientHeight;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    R0 = clamp(Math.min(W, H) * 0.17, 52, 128);
+  }
+
+  // ---------- 史莱姆构造 ----------
+  function newBlob() {
+    return { P: [], R: R0, targetArea: Math.PI * R0 * R0, restLen: 2 * Math.PI * R0 / N,
+             fill: 1, noMerge: 0, blinkT: Math.random() * 3, nextBlink: 2 + Math.random() * 3 };
+  }
+
+  function circleBlob(cx, cy, R, vx, vy) {
+    var b = newBlob();
+    b.R = R;
+    b.targetArea = Math.PI * R * R;
+    b.restLen = 2 * Math.PI * R / N;
+    for (var i = 0; i < N; i++) {
+      var a = i / N * Math.PI * 2;
+      var x = cx + Math.cos(a) * R, y = cy + Math.sin(a) * R;
+      b.P.push({ x: x, y: y, px: x - vx, py: y - vy, nx: 0, ny: 0, touch: 0 });
+    }
+    return b;
+  }
+
+  function polyArea(pts) {
+    var s = 0, M = pts.length;
+    for (var i = 0; i < M; i++) {
+      var a = pts[i], b = pts[(i + 1) % M];
+      s += a.x * b.y - b.x * a.y;
+    }
+    return Math.abs(s / 2);
+  }
+
+  // 把任意闭合折线按弧长重采样成 N 个点，位置和速度一起插值
+  function resample(pts) {
+    var M = pts.length, seg = [], total = 0, i;
+    for (i = 0; i < M; i++) {
+      var a = pts[i], b = pts[(i + 1) % M];
+      var d = Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
+      seg.push(d); total += d;
+    }
+    if (total < 1e-6) return null;
+    var out = [], stepLen = total / N, idx = 0, acc = 0;
+    for (var k = 0; k < N; k++) {
+      var target = k * stepLen;
+      while (idx < M - 1 && acc + seg[idx] < target) { acc += seg[idx]; idx++; }
+      var t = seg[idx] > 1e-9 ? clamp((target - acc) / seg[idx], 0, 1) : 0;
+      var p = pts[idx], q = pts[(idx + 1) % M];
+      out.push({
+        x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t,
+        vx: p.vx + (q.vx - p.vx) * t, vy: p.vy + (q.vy - p.vy) * t
+      });
+    }
+    return out;
+  }
+
+  // 从重采样好的点造一只新史莱姆，保留形状和速度。
+  // targetArea 由调用方按比例分配 —— 用弧线自身面积会漏掉腰部那块，反复撕扯史莱姆会越玩越小。
+  function blobFromPoints(rs, area, popX, popY) {
+    var b = newBlob();
+    b.targetArea = area;
+    b.R = Math.sqrt(area / Math.PI);
+    b.restLen = 2 * Math.PI * b.R / N;
+    b.noMerge = NO_MERGE_T;
+    for (var i = 0; i < N; i++) {
+      var p = rs[i];
+      var vx = p.vx + popX, vy = p.vy + popY;
+      b.P.push({ x: p.x, y: p.y, px: p.x - vx, py: p.y - vy, nx: 0, ny: 0, touch: 0 });
+    }
+    return b;
+  }
+
+  function reset() {
+    blobs.length = 0;
+    grabs.length = 0;
+    blobs.push(circleBlob(W / 2, H * 0.36, R0, 0, 0));
+  }
+
+  function centroidOf(b) {
+    var cx = 0, cy = 0, P = b.P;
+    for (var i = 0; i < N; i++) { cx += P[i].x; cy += P[i].y; }
+    return { x: cx / N, y: cy / N };
+  }
+
+  function meanVel(b) {
+    var vx = 0, vy = 0, P = b.P;
+    for (var i = 0; i < N; i++) { vx += P[i].x - P[i].px; vy += P[i].y - P[i].py; }
+    return { x: vx / N, y: vy / N };
+  }
+
+  function signedArea(b) {
+    var s = 0, P = b.P;
+    for (var i = 0; i < N; i++) {
+      var a = P[i], c = P[(i + 1) % N];
+      s += a.x * c.y - c.x * a.y;
+    }
+    return s / 2;
+  }
+
+  // ---------- 物理 ----------
+  // radial: 径向法线的混入比例。边法线在多边形自交时会翻向内侧，
+  // 而「粒子指向质心」的方向永远朝外，用它兜底保证被揉烂后还能重新鼓起来。
+  function computeNormals(b, sign, radial) {
+    var P = b.P, i, a, c, ex, ey, len, nx, ny;
+    for (i = 0; i < N; i++) { P[i].nx = 0; P[i].ny = 0; }
+    for (i = 0; i < N; i++) {
+      a = P[i]; c = P[(i + 1) % N];
+      ex = c.x - a.x; ey = c.y - a.y;
+      len = Math.sqrt(ex * ex + ey * ey) || 1e-6;
+      nx = (ey / len) * sign; ny = (-ex / len) * sign;
+      a.nx += nx; a.ny += ny;
+      c.nx += nx; c.ny += ny;
+    }
+    var ct = centroidOf(b);
+    for (i = 0; i < N; i++) {
+      var p = P[i];
+      var l = Math.sqrt(p.nx * p.nx + p.ny * p.ny) || 1e-6;
+      var ux = p.nx / l, uy = p.ny / l;
+      var rx = p.x - ct.x, ry = p.y - ct.y;
+      var rl = Math.sqrt(rx * rx + ry * ry);
+      if (rl > 1e-6) { rx /= rl; ry /= rl; } else { rx = ux; ry = uy; }
+      ux = ux * (1 - radial) + rx * radial;
+      uy = uy * (1 - radial) + ry * radial;
+      var m = Math.sqrt(ux * ux + uy * uy) || 1e-6;
+      p.nx = ux / m; p.ny = uy / m;
+    }
+  }
+
+  function integrate(b, dt) {
+    var area = signedArea(b);
+    var sign = area >= 0 ? 1 : -1;
+    var absArea = Math.max(Math.abs(area), 1);
+    b.fill = absArea / b.targetArea;
+
+    var radial = clamp(0.25 + (0.5 - b.fill) * 2, 0.25, 1);
+    computeNormals(b, sign, radial);
+
+    var pAcc = clamp(PRESSURE_K * (1 / b.fill - 1), -7000, 14000);
+    var P = b.P;
+    for (var i = 0; i < N; i++) {
+      var p = P[i];
+      var ax = p.nx * pAcc;
+      var ay = p.ny * pAcc + GRAVITY;
+      var vx = (p.x - p.px) * DRAG;
+      var vy = (p.y - p.py) * DRAG;
+      p.px = p.x; p.py = p.y;
+      p.x += vx + ax * dt * dt;
+      p.y += vy + ay * dt * dt;
+    }
+  }
+
+  function applyGrab() {
+    for (var i = 0; i < grabs.length; i++) {
+      var g = grabs[i], p = g.b.P[g.i];
+      var tx = pointer.x + g.ox, ty = pointer.y + g.oy;
+      var k = g.w * GRAB_K;
+      p.x += (tx - p.x) * k;
+      p.y += (ty - p.y) * k;
+    }
+  }
+
+  function clampWalls(b) {
+    var P = b.P;
+    for (var i = 0; i < N; i++) {
+      var p = P[i];
+      if (p.y > H - PAD) { p.y = H - PAD; p.touch = 1; }
+      else if (p.y < PAD) { p.y = PAD; p.touch = 1; }
+      if (p.x > W - PAD) { p.x = W - PAD; p.touch = 1; }
+      else if (p.x < PAD) { p.x = PAD; p.touch = 1; }
+    }
+  }
+
+  function constrain(b) {
+    var P = b.P, i, k, it, a, c, dx, dy, d, diff, s, t;
+    for (it = 0; it < ITER; it++) {
+      // 逐次反向扫描 —— 顺序求解会产生方向偏置，落地瞬间被放大成横向漂移
+      var back = (it & 1) === 1;
+      for (k = 0; k < N; k++) {
+        i = back ? (N - 1 - k) : k;
+        a = P[i]; c = P[(i + 1) % N];
+        dx = c.x - a.x; dy = c.y - a.y;
+        d = Math.sqrt(dx * dx + dy * dy) || 1e-6;
+        diff = (d - b.restLen) / d * 0.5 * SPRING_K;
+        s = dx * diff; t = dy * diff;
+        a.x += s; a.y += t;
+        c.x -= s; c.y -= t;
+      }
+
+      // 形状记忆（shape matching）：先解出当前形状相对静止圆的最佳旋转角，
+      // 再把每个粒子朝它「该在的角度」拉一点。目标形状恒为圆，所以从任何
+      // 退化状态（压成线、自交、缩成点）都能撑回来。被揉烂时临时加大力度。
+      // 鼓着的时候几乎不管（保住手感），塌下去才发力（保住能恢复）
+      var memK = MEMORY_K * (0.25 + clamp((0.75 - b.fill) * 5, 0, 6));
+      var ct = centroidOf(b);
+      var num = 0, den = 0, rx, ry;
+      for (i = 0; i < N; i++) {
+        rx = P[i].x - ct.x; ry = P[i].y - ct.y;
+        num += QU[i].x * ry - QU[i].y * rx;
+        den += QU[i].x * rx + QU[i].y * ry;
+      }
+      var ang = Math.atan2(num, den);
+      var ca = Math.cos(ang), sa = Math.sin(ang);
+      for (i = 0; i < N; i++) {
+        a = P[i];
+        var gx = ct.x + (QU[i].x * ca - QU[i].y * sa) * b.R;
+        var gy = ct.y + (QU[i].x * sa + QU[i].y * ca) * b.R;
+        a.x += (gx - a.x) * memK;
+        a.y += (gy - a.y) * memK;
+      }
+
+      clampWalls(b);
+    }
+  }
+
+  function resolveVelocity(b) {
+    var P = b.P;
+    for (var i = 0; i < N; i++) {
+      var p = P[i];
+      if (!p.touch) continue;
+      var vx = p.x - p.px, vy = p.y - p.py;
+      if (p.y >= H - PAD || p.y <= PAD) { vy = -vy * RESTITUTION; vx = vx * FRICTION; }
+      if (p.x >= W - PAD || p.x <= PAD) { vx = -vx * RESTITUTION; vy = vy * FRICTION; }
+      if (Math.abs(vx) < SLEEP) vx = 0;
+      if (Math.abs(vy) < SLEEP) vy = 0;
+      p.px = p.x - vx;
+      p.py = p.y - vy;
+    }
+  }
+
+  function step(b, dt) {
+    for (var i = 0; i < N; i++) b.P[i].touch = 0;
+    integrate(b, dt);
+    applyGrab();
+    constrain(b);
+    resolveVelocity(b);
+  }
+
+  // ---------- 分裂 ----------
+  // 思路：PCA 求长轴 -> 沿长轴分箱量出「腰围」-> 最细处若够细且够长，就从那儿断开
+  function trySplit(b) {
+    if (blobs.length >= MAX_BLOBS || b.R < MIN_SPLIT_R) return null;
+    // 只有正被捏住的才会断。否则落地、弹跳、空中翻滚都可能被误判成「拉长」，
+    // 史莱姆会莫名其妙自己碎掉 —— 这是最让人困惑的一类意外
+    if (!grabs.length || grabs[0].b !== b) return null;
+
+    var P = b.P, i, dx, dy;
+    var c = centroidOf(b);
+
+    var sxx = 0, sxy = 0, syy = 0;
+    for (i = 0; i < N; i++) {
+      dx = P[i].x - c.x; dy = P[i].y - c.y;
+      sxx += dx * dx; sxy += dx * dy; syy += dy * dy;
+    }
+    sxx /= N; sxy /= N; syy /= N;
+
+    var tr = sxx + syy, det = sxx * syy - sxy * sxy;
+    var l1 = tr / 2 + Math.sqrt(Math.max(tr * tr / 4 - det, 0));
+    var ux, uy;
+    if (Math.abs(sxy) > 1e-9) { ux = l1 - syy; uy = sxy; }
+    else if (sxx >= syy) { ux = 1; uy = 0; }
+    else { ux = 0; uy = 1; }
+    var ul = Math.sqrt(ux * ux + uy * uy) || 1e-6;
+    ux /= ul; uy /= ul;
+    var vx = -uy, vy = ux;
+
+    var proj = new Array(N), perp = new Array(N);
+    var minU = Infinity, maxU = -Infinity;
+    for (i = 0; i < N; i++) {
+      dx = P[i].x - c.x; dy = P[i].y - c.y;
+      proj[i] = dx * ux + dy * uy;
+      perp[i] = dx * vx + dy * vy;
+      if (proj[i] < minU) minU = proj[i];
+      if (proj[i] > maxU) maxU = proj[i];
+    }
+
+    var extent = maxU - minU;
+    if (extent < b.R * STRETCH_RATIO) return null;
+
+    // 只在中间 70% 找腰，避免从两端切
+    var lo = minU + extent * 0.15, hi = maxU - extent * 0.15;
+    var span = hi - lo;
+    if (span <= 1e-6) return null;
+
+    var BINS = 14;
+    var bMin = [], bMax = [], bCnt = [];
+    for (i = 0; i < BINS; i++) { bMin.push(Infinity); bMax.push(-Infinity); bCnt.push(0); }
+    for (i = 0; i < N; i++) {
+      var k = Math.floor((proj[i] - lo) / span * BINS);
+      if (k < 0 || k >= BINS) continue;
+      bCnt[k]++;
+      if (perp[i] < bMin[k]) bMin[k] = perp[i];
+      if (perp[i] > bMax[k]) bMax[k] = perp[i];
+    }
+
+    var bestW = Infinity, bestS = 0;
+    for (i = 0; i < BINS; i++) {
+      var w = bCnt[i] === 0 ? 0 : (bMax[i] - bMin[i]);
+      if (w < bestW) { bestW = w; bestS = lo + (i + 0.5) * span / BINS; }
+    }
+    if (bestW > b.R * NECK_RATIO) return null;
+
+    // 沿腰线切开，要求切口正好把环切成两段连续圆弧
+    var side = new Array(N);
+    for (i = 0; i < N; i++) side[i] = proj[i] < bestS;
+
+    var cuts = [];
+    for (i = 0; i < N; i++) if (side[i] !== side[(i + 1) % N]) cuts.push(i);
+    if (cuts.length !== 2) return null;
+
+    var arcA = [], arcB = [];
+    var j = (cuts[0] + 1) % N;
+    while (j !== (cuts[1] + 1) % N) { arcA.push(j); j = (j + 1) % N; }
+    j = (cuts[1] + 1) % N;
+    while (j !== (cuts[0] + 1) % N) { arcB.push(j); j = (j + 1) % N; }
+    if (arcA.length < MIN_ARC || arcB.length < MIN_ARC) return null;
+
+    function pack(arc) {
+      var out = [];
+      for (var m = 0; m < arc.length; m++) {
+        var p = P[arc[m]];
+        out.push({ x: p.x, y: p.y, vx: p.x - p.px, vy: p.y - p.py });
+      }
+      return out;
+    }
+
+    var rsA = resample(pack(arcA)), rsB = resample(pack(arcB));
+    if (!rsA || !rsB) return null;
+
+    // 按两半的实际面积占比瓜分母体体积，保证撕多少次总量都不变
+    var aA = Math.max(polyArea(rsA), 1), aB = Math.max(polyArea(rsB), 1);
+    var tot = aA + aB;
+
+    // 两半沿长轴反向弹开
+    var sA = side[arcA[0]] ? -1 : 1;
+    var b1 = blobFromPoints(rsA, b.targetArea * aA / tot, ux * POP * sA, uy * POP * sA);
+    var b2 = blobFromPoints(rsB, b.targetArea * aB / tot, -ux * POP * sA, -uy * POP * sA);
+    if (!b1 || !b2) return null;
+    return [b1, b2];
+  }
+
+  // ---------- 融合 ----------
+  function tryMerge() {
+    for (var i = 0; i < blobs.length; i++) {
+      for (var j = i + 1; j < blobs.length; j++) {
+        var a = blobs[i], b = blobs[j];
+        if (a.noMerge > 0 || b.noMerge > 0) continue;
+        var ca = centroidOf(a), cb = centroidOf(b);
+        var dx = cb.x - ca.x, dy = cb.y - ca.y;
+        var d = Math.sqrt(dx * dx + dy * dy);
+        if (d > (a.R + b.R) * MERGE_RATIO) continue;
+
+        var aa = a.targetArea, ab = b.targetArea, sum = aa + ab;
+        var va = meanVel(a), vb = meanVel(b);
+        var R = Math.sqrt(sum / Math.PI);
+        var nb = circleBlob(
+          (ca.x * aa + cb.x * ab) / sum,
+          (ca.y * aa + cb.y * ab) / sum,
+          R,
+          (va.x * aa + vb.x * ab) / sum,
+          (va.y * aa + vb.y * ab) / sum
+        );
+        // 被抓着的那只融合后，手继续抓新的那只
+        var held = grabs.length && (grabs[0].b === a || grabs[0].b === b);
+        blobs.splice(j, 1);
+        blobs.splice(i, 1);
+        blobs.push(nb);
+        if (held) acquire(pointer.x, pointer.y);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // ---------- 渲染 ----------
+  function tracePath(b) {
+    var P = b.P;
+    ctx.beginPath();
+    var last = P[N - 1], first = P[0];
+    ctx.moveTo((last.x + first.x) / 2, (last.y + first.y) / 2);
+    for (var i = 0; i < N; i++) {
+      var c = P[i], n = P[(i + 1) % N];
+      ctx.quadraticCurveTo(c.x, c.y, (c.x + n.x) / 2, (c.y + n.y) / 2);
+    }
+    ctx.closePath();
+  }
+
+  function drawEyes(b, c, dt) {
+    var R = b.R;
+    b.blinkT += dt;
+    var lid = 1;
+    if (b.blinkT > b.nextBlink) {
+      var e = b.blinkT - b.nextBlink;
+      if (e < 0.14) lid = clamp(Math.abs(e - 0.07) / 0.07, 0.08, 1);
+      else { b.blinkT = 0; b.nextBlink = 2.2 + Math.random() * 3.4; }
+    }
+
+    var P = b.P, minx = 1e9, maxx = -1e9, miny = 1e9, maxy = -1e9;
+    for (var i = 0; i < N; i++) {
+      if (P[i].x < minx) minx = P[i].x;
+      if (P[i].x > maxx) maxx = P[i].x;
+      if (P[i].y < miny) miny = P[i].y;
+      if (P[i].y > maxy) maxy = P[i].y;
+    }
+    var sx = clamp((maxx - minx) / (R * 2), 0.55, 1.7);
+    var sy = clamp((maxy - miny) / (R * 2), 0.45, 1.7);
+
+    var eyeDx = R * 0.30 * sx, eyeDy = -R * 0.10 * sy;
+    var eyeR = R * 0.155 * Math.min(sx, sy);
+
+    var lx = pointer.x - c.x, ly = pointer.y - c.y;
+    var ll = Math.sqrt(lx * lx + ly * ly) || 1;
+    var look = Math.min(ll / 260, 1) * eyeR * 0.42;
+    lx = lx / ll * look; ly = ly / ll * look;
+
+    for (var s = -1; s <= 1; s += 2) {
+      ctx.save();
+      ctx.translate(c.x + eyeDx * s, c.y + eyeDy);
+      ctx.scale(1, lid);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, eyeR, eyeR * 1.12, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(lx, ly, eyeR * 0.50, eyeR * 0.58, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#1b2233';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(lx - eyeR * 0.18, ly - eyeR * 0.22, eyeR * 0.16, eyeR * 0.16, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,.92)';
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawBlob(b, dt) {
+    var c = centroidOf(b), R = b.R;
+
+    var shadowY = H - 6;
+    var spread = clamp(1 - (shadowY - c.y) / (R * 6), 0.25, 1);
+    ctx.save();
+    ctx.globalAlpha = 0.30 * spread;
+    ctx.beginPath();
+    ctx.ellipse(c.x, shadowY, R * 1.15 * spread, R * 0.20 * spread, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#000';
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    tracePath(b);
+    ctx.shadowColor = theme.glow;
+    ctx.shadowBlur = 34;
+    ctx.fillStyle = theme.mid;
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    tracePath(b);
+    var g = ctx.createRadialGradient(c.x - R * 0.38, c.y - R * 0.48, R * 0.10, c.x, c.y + R * 0.20, R * 1.55);
+    g.addColorStop(0, theme.hi);
+    g.addColorStop(0.42, theme.mid);
+    g.addColorStop(1, theme.low);
+    ctx.fillStyle = g;
+    ctx.fill();
+
+    var g2 = ctx.createRadialGradient(c.x, c.y + R * 0.75, R * 0.05, c.x, c.y + R * 0.55, R * 1.25);
+    g2.addColorStop(0, 'rgba(255,255,255,.30)');
+    g2.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g2;
+    ctx.fill();
+    ctx.clip();
+
+    ctx.beginPath();
+    ctx.ellipse(c.x - R * 0.40, c.y - R * 0.52, R * 0.30, R * 0.17, -0.55, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,.72)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(c.x - R * 0.10, c.y - R * 0.62, R * 0.10, R * 0.07, -0.5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    tracePath(b);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255,255,255,.20)';
+    ctx.stroke();
+    ctx.restore();
+
+    drawEyes(b, c, dt);
+  }
+
+  function draw(dt) {
+    ctx.clearRect(0, 0, W, H);
+    for (var i = 0; i < blobs.length; i++) drawBlob(blobs[i], dt);
+  }
+
+  // ---------- 交互 ----------
+  var hint = document.getElementById('hint');
+  var hinted = false;
+
+  function acquire(x, y) {
+    grabs.length = 0;
+    if (!blobs.length) return;
+
+    // 先找最近的粒子，锁定要抓的那一只
+    var best = null, dmin = Infinity, k, i, dx, dy, d;
+    for (k = 0; k < blobs.length; k++) {
+      for (i = 0; i < N; i++) {
+        dx = blobs[k].P[i].x - x; dy = blobs[k].P[i].y - y;
+        d = Math.sqrt(dx * dx + dy * dy);
+        if (d < dmin) { dmin = d; best = blobs[k]; }
+      }
+    }
+    if (!best || dmin > best.R * 2.2) return;
+
+    // 抓取半径随体型缩放（固定值会攥住整只，永远拉不出细腰）；
+    // 但按在正中间时最近的边缘粒子可能就在半径之外，所以不够就自动放宽，保证一按必有反应
+    var gr = Math.min(GRAB_R, best.R * GRAB_FACTOR);
+    gr = Math.max(gr, dmin + best.R * 0.35);
+
+    for (i = 0; i < N; i++) {
+      dx = best.P[i].x - x; dy = best.P[i].y - y;
+      d = Math.sqrt(dx * dx + dy * dy);
+      if (d < gr) grabs.push({ b: best, i: i, ox: dx, oy: dy, w: 1 - d / gr });
+    }
+  }
+
+  function localPos(e) {
+    var r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  function onDown(e) {
+    var q = localPos(e);
+    pointer.x = q.x; pointer.y = q.y; pointer.down = true;
+    acquire(q.x, q.y);
+    if (!hinted) { hinted = true; hint.classList.add('gone'); }
+  }
+  function onMove(e) {
+    var q = localPos(e);
+    pointer.x = q.x; pointer.y = q.y;
+  }
+  function onUp() { pointer.down = false; grabs.length = 0; }
+
+  canvas.addEventListener('pointerdown', function (e) { canvas.setPointerCapture(e.pointerId); onDown(e); });
+  canvas.addEventListener('pointermove', onMove);
+  canvas.addEventListener('pointerup', onUp);
+  canvas.addEventListener('pointercancel', onUp);
+  canvas.addEventListener('pointerleave', onUp);
+  window.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  var bar = document.getElementById('bar');
+  THEMES.forEach(function (t, idx) {
+    var el = document.createElement('div');
+    el.className = 'sw' + (idx === 0 ? ' on' : '');
+    el.style.background = t.mid;
+    el.title = t.name;
+    el.addEventListener('pointerdown', function (e) {
+      e.stopPropagation();
+      theme = t;
+      Array.prototype.forEach.call(bar.querySelectorAll('.sw'), function (n) { n.classList.remove('on'); });
+      el.classList.add('on');
+    });
+    bar.appendChild(el);
+  });
+
+  var rs = document.createElement('div');
+  rs.className = 'rs';
+  rs.textContent = '↺';
+  rs.addEventListener('pointerdown', function (e) { e.stopPropagation(); reset(); });
+  bar.appendChild(rs);
+
+  // ---------- 主循环 ----------
+  var lastT = 0;
+  function loop(t) {
+    var dt = lastT ? (t - lastT) / 1000 : 1 / 60;
+    lastT = t;
+    dt = Math.min(dt, 1 / 30);
+
+    var sub = dt / SUBSTEPS, i, s;
+    for (s = 0; s < SUBSTEPS; s++) {
+      for (i = 0; i < blobs.length; i++) step(blobs[i], sub);
+    }
+
+    for (i = 0; i < blobs.length; i++) if (blobs[i].noMerge > 0) blobs[i].noMerge -= dt;
+
+    // 分裂
+    for (i = blobs.length - 1; i >= 0; i--) {
+      var pair = trySplit(blobs[i]);
+      if (pair) {
+        var wasHeld = grabs.length && grabs[0].b === blobs[i];
+        blobs.splice(i, 1, pair[0], pair[1]);
+        if (wasHeld && pointer.down) acquire(pointer.x, pointer.y);
+        else if (wasHeld) grabs.length = 0;
+      }
+    }
+
+    tryMerge();
+    draw(dt);
+    requestAnimationFrame(loop);
+  }
+
+  window.addEventListener('resize', resize);
+
+  resize();
+  reset();
+  pointer.x = W / 2; pointer.y = H * 0.36;
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>韩芯双雄实时看盘</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2308101e'/%3E%3Ccircle cx='11' cy='16' r='5' fill='%2366e5d7'/%3E%3Ccircle cx='21' cy='16' r='5' fill='%23a78bfa'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/static/korea.css?v=2" />
+  <script src="/static/echarts.min.js?v=5.6.0"></script>
+</head>
+<body class="kr-body">
+  <main class="kr-shell">
+    <header class="kr-hero">
+      <div>
+        <p class="kr-kicker">KOREA EXCHANGE · SEMICONDUCTOR WATCH</p>
+        <h1>韩芯双雄实时看盘</h1>
+        <p class="kr-subtitle">SK 海力士与三星电子 · 约 8 秒行情刷新 · 从开盘至当前/收盘的分时对比</p>
+      </div>
+      <div class="kr-top-actions">
+        <span id="kr-market-state" class="kr-market-pill"><i></i>市场状态读取中</span>
+        <a href="/" class="kr-nav-link">A股面板</a>
+        <a href="/lhb" class="kr-nav-link">龙虎榜</a>
+      </div>
+    </header>
+
+    <section id="kr-cards" class="kr-card-grid" aria-label="韩国半导体行情卡片">
+      <article class="kr-stock-card accent-teal loading">
+        <div class="kr-card-head">
+          <div>
+            <h2>SK 海力士</h2>
+            <p>SK hynix Inc. · KRX:000660</p>
+          </div>
+          <span>加载中</span>
+        </div>
+        <div class="kr-price">-- <small>KRW</small></div>
+      </article>
+      <article class="kr-stock-card accent-violet loading">
+        <div class="kr-card-head">
+          <div>
+            <h2>三星电子</h2>
+            <p>Samsung Electronics Co., Ltd. · KRX:005930</p>
+          </div>
+          <span>加载中</span>
+        </div>
+        <div class="kr-price">-- <small>KRW</small></div>
+      </article>
+    </section>
+
+    <section class="kr-lower-grid">
+      <article class="kr-panel kr-chart-panel">
+        <div class="kr-panel-head">
+          <div>
+            <h2>日内分时走势</h2>
+            <p id="kr-chart-note">以各自昨收为基准归一化，便于比较从 KRX 09:00 开盘至当前/15:30 收盘的表现。</p>
+          </div>
+          <div class="kr-legend">
+            <span><i class="dot-teal"></i>SK 海力士</span>
+            <span><i class="dot-violet"></i>三星电子</span>
+          </div>
+        </div>
+        <div id="kr-chart"></div>
+      </article>
+
+      <aside class="kr-side">
+        <article class="kr-panel kr-archive">
+          <div class="kr-panel-head compact">
+            <div>
+              <h2>确认收盘价归档</h2>
+              <p>收到行情源 CLOSE 状态后，服务会自动写入本机文件。</p>
+            </div>
+          </div>
+          <div id="kr-archive-list" class="kr-archive-list">
+            <div class="kr-archive-row muted">归档读取中</div>
+          </div>
+        </article>
+
+        <article class="kr-panel kr-status">
+          <div class="kr-panel-head compact">
+            <div>
+              <h2>数据状态</h2>
+              <p id="kr-updated-at">等待首次刷新</p>
+            </div>
+          </div>
+          <dl id="kr-status-grid" class="kr-status-grid">
+            <div><dt>行情源</dt><dd>东方财富海外</dd></div>
+            <div><dt>刷新节奏</dt><dd>8 秒</dd></div>
+            <div><dt>交易时段</dt><dd>KRX 09:00-15:30</dd></div>
+            <div><dt>分时状态</dt><dd id="kr-trend-state">读取中</dd></div>
+          </dl>
+        </article>
+      </aside>
+    </section>
+  </main>
+
+  <script src="/static/korea.js?v=2"></script>
+</body>
+</html>

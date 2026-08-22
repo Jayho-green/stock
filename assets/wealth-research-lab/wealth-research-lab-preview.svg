@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1200" role="img" aria-labelledby="title">
+  <title id="title">财富研究所品牌展示</title>
+  <rect width="1600" height="1200" fill="#EEEAE0"/>
+  <circle cx="1512" cy="52" r="300" fill="#D6A642" opacity=".88"/>
+  <text x="105" y="108" fill="#68766F" font-family="Avenir Next, Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="5">BRAND CONCEPT / 01</text>
+
+  <g transform="translate(90 170)">
+    <rect width="1420" height="470" rx="56" fill="#FFFEFA"/>
+    <g transform="translate(72 53) scale(.70)">
+      <rect x="24" y="24" width="464" height="464" rx="116" fill="#0C3B2E"/>
+      <circle cx="237" cy="222" r="119" fill="none" stroke="#F6F0E4" stroke-width="30"/>
+      <path d="M321 306L390 375" fill="none" stroke="#D6A642" stroke-width="40" stroke-linecap="round"/>
+      <rect x="166" y="236" width="38" height="62" rx="8" fill="#F6F0E4"/>
+      <rect x="218" y="197" width="38" height="101" rx="8" fill="#F6F0E4"/>
+      <rect x="270" y="151" width="38" height="147" rx="8" fill="#D6A642"/>
+      <path d="M176 216L233 177L288 129" fill="none" stroke="#D6A642" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="176" cy="216" r="9" fill="#D6A642"/>
+      <circle cx="233" cy="177" r="9" fill="#D6A642"/>
+      <circle cx="288" cy="129" r="9" fill="#D6A642"/>
+    </g>
+    <g font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif">
+      <text x="490" y="205" fill="#10251E" font-size="112" font-weight="700" letter-spacing="5">财富<tspan fill="#0C3B2E">研究所</tspan></text>
+      <text x="496" y="287" fill="#9A742A" font-family="Avenir Next, Arial, sans-serif" font-size="27" font-weight="700" letter-spacing="7">WEALTH RESEARCH LAB</text>
+      <text x="498" y="355" fill="#68766F" font-size="22" font-weight="600" letter-spacing="7">理财 · 投资 · 认知</text>
+    </g>
+  </g>
+
+  <g transform="translate(90 700)">
+    <rect width="690" height="390" rx="56" fill="#0C3B2E"/>
+    <g transform="translate(72 55) scale(.55)">
+      <circle cx="237" cy="222" r="119" fill="none" stroke="#F6F0E4" stroke-width="30"/>
+      <path d="M321 306L390 375" fill="none" stroke="#D6A642" stroke-width="40" stroke-linecap="round"/>
+      <rect x="166" y="236" width="38" height="62" rx="8" fill="#F6F0E4"/>
+      <rect x="218" y="197" width="38" height="101" rx="8" fill="#F6F0E4"/>
+      <rect x="270" y="151" width="38" height="147" rx="8" fill="#D6A642"/>
+      <path d="M176 216L233 177L288 129" fill="none" stroke="#D6A642" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="176" cy="216" r="9" fill="#D6A642"/>
+      <circle cx="233" cy="177" r="9" fill="#D6A642"/>
+      <circle cx="288" cy="129" r="9" fill="#D6A642"/>
+    </g>
+    <g font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif">
+      <text x="365" y="165" fill="#F6F0E4" font-size="42" font-weight="700">研究财富</text>
+      <text x="365" y="230" fill="#D6A642" font-size="42" font-weight="700">更研究选择</text>
+      <text x="368" y="286" fill="#ABC1B7" font-size="19" font-weight="500" letter-spacing="3">长期 · 理性 · 独立判断</text>
+    </g>
+  </g>
+
+  <g transform="translate(830 700)">
+    <rect width="680" height="390" rx="56" fill="#DCE4DE"/>
+    <circle cx="195" cy="195" r="135" fill="#0C3B2E"/>
+    <g transform="translate(66 68) scale(.51)">
+      <circle cx="237" cy="222" r="119" fill="none" stroke="#F6F0E4" stroke-width="30"/>
+      <path d="M321 306L390 375" fill="none" stroke="#D6A642" stroke-width="40" stroke-linecap="round"/>
+      <rect x="166" y="236" width="38" height="62" rx="8" fill="#F6F0E4"/>
+      <rect x="218" y="197" width="38" height="101" rx="8" fill="#F6F0E4"/>
+      <rect x="270" y="151" width="38" height="147" rx="8" fill="#D6A642"/>
+      <path d="M176 216L233 177L288 129" fill="none" stroke="#D6A642" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="176" cy="216" r="9" fill="#D6A642"/>
+      <circle cx="233" cy="177" r="9" fill="#D6A642"/>
+      <circle cx="288" cy="129" r="9" fill="#D6A642"/>
+    </g>
+    <text x="382" y="168" fill="#10251E" font-family="Avenir Next, Arial, sans-serif" font-size="22" font-weight="700" letter-spacing="3">AVATAR READY</text>
+    <text x="382" y="218" fill="#68766F" font-family="PingFang SC, sans-serif" font-size="20">小尺寸仍保持清晰识别</text>
+    <text x="382" y="256" fill="#68766F" font-family="PingFang SC, sans-serif" font-size="20">适合视频、公众号与社媒</text>
+  </g>
+</svg>
