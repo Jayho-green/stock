@@ -93,6 +93,65 @@ GLOBAL_QUOTE_TARGETS = [
 ]
 
 
+def _temp_level(t: float) -> dict:
+    """波段战法市场温度分级:(涨-跌)/跌*100%。"""
+    if t < 0:
+        return {"level": "冰点", "tone": "bad", "action": "观望，不做波段"}
+    if t < 65:
+        return {"level": "不达标", "tone": "bad", "action": "观望，市场太弱"}
+    if t < 80:
+        return {"level": "及格", "tone": "ok", "action": "偏积极，可试探性关注"}
+    if t < 130:
+        return {"level": "强势", "tone": "good", "action": "积极，瞄准目标品种"}
+    if t <= 150:
+        return {"level": "较佳", "tone": "good", "action": "最佳状态，大胆做"}
+    return {"level": "冲顶", "tone": "warn", "action": "警惕冲顶，仅超短线或观望"}
+
+
+def _no_new_low_streak(lows: list[float]) -> int:
+    """从最新一根往前数,连续多少根低点未跌破此前所有低点(持平算未跌破)。"""
+    streak = 0
+    for i in range(len(lows) - 1, 0, -1):
+        if lows[i] >= min(lows[:i]):
+            streak += 1
+        else:
+            break
+    return streak
+
+
+def _band_index_check(bars: pd.DataFrame) -> dict:
+    """大盘(上证)体检:是否创新低、连续不创新低天数、位置。"""
+    if bars is None or len(bars) < 10:
+        return {}
+    lows = [float(v) for v in bars["low"].tolist()]
+    highs = [float(v) for v in bars["high"].tolist()]
+    closes = [float(v) for v in bars["close"].tolist()]
+    window = lows[-60:]
+    low60 = min(window)
+    high60 = max(highs[-60:])
+    last = closes[-1]
+    pos_pct = (last - low60) / (high60 - low60) * 100 if high60 > low60 else 50.0
+    if pos_pct <= 33:
+        position = "底部区域"
+    elif pos_pct <= 70:
+        position = "半山腰"
+    else:
+        position = "高位"
+    streak = _no_new_low_streak(lows[-60:])
+    made_new_low = len(lows) > 1 and lows[-1] < min(lows[:-1])
+    return {
+        "close": round(last, 2),
+        "low60": round(low60, 2),
+        "high60": round(high60, 2),
+        "position": position,
+        "pos_pct": round(pos_pct, 1),
+        "no_new_low_streak": streak,
+        "made_new_low": made_new_low,
+        "stable": streak >= 3,
+        "note": "连续3天不创新低=底部企稳" if streak >= 3 else ("今日创新低" if made_new_low else "尚未连续3天不创新低"),
+    }
+
+
 class DashboardService:
     def __init__(
         self,
@@ -130,6 +189,7 @@ class DashboardService:
         self._cache = TTLCache(ttl, now)
         self._global_cache = TTLCache(7, now)
         self._long_cache = TTLCache(6 * 3600, now)
+        self._band_cache = TTLCache(300, now)
         if self.news_event_store is not None:
             cached_news = self._read_news_cache()
             if cached_news and cached_news.get("items"):
@@ -148,6 +208,167 @@ class DashboardService:
     def get_watchlist(self) -> list[dict]:
         """轻量返回自选名单,不拉行情。"""
         return self._active_watchlist()
+
+    def get_band_market(self) -> dict:
+        """波段战法·市场环境:温度=(涨-跌)/跌*100% + 上证大盘体检,缓存5分钟。"""
+        cached = self._band_cache.get("band_market")
+        if cached is not None:
+            return cached
+        result: dict[str, Any] = {"temperature": None, "index": None}
+        if hasattr(self.source, "get_market_activity"):
+            try:
+                act = self.source.get_market_activity()
+                if act.get("down"):
+                    t = (act["up"] - act["down"]) / act["down"] * 100
+                    result["temperature"] = {**act, "value": round(t, 1), **_temp_level(t)}
+            except Exception:
+                pass
+        if hasattr(self.source, "get_index_daily"):
+            try:
+                end = effective_market_date(self.clock)
+                start = end - timedelta(days=150)
+                bars = self.source.get_index_daily(
+                    "sh000001", start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+                )
+                result["index"] = _band_index_check(bars)
+            except Exception:
+                pass
+        self._band_cache.set("band_market", result)
+        return result
+
+    def get_band_stock(self, code: str, name: str | None = None) -> dict:
+        """波段战法·个股体检:向左看齐/超跌/不创新低/10日线。"""
+        code = str(code).zfill(6)
+        name = name or None
+        if name is None:
+            name = next(
+                (w.get("name") for w in self._active_watchlist() if w.get("code") == code),
+                code,
+            )
+        bars = self._daily_bars(code).tail(80).reset_index(drop=True)
+        if len(bars) < 20:
+            return {"code": code, "name": name, "checks": [], "verdict": {"title": "数据不足", "tone": "bad", "note": "日线不足20根"}}
+
+        lows = [float(v) for v in bars["low"].tolist()]
+        highs = [float(v) for v in bars["high"].tolist()]
+        closes = [float(v) for v in bars["close"].tolist()]
+        last = closes[-1]
+
+        min5 = min(lows[-5:])
+        dist = (last - min5) / min5 * 100 if min5 else 0.0
+        high60 = max(highs[-60:])
+        drawdown = (high60 - last) / high60 * 100 if high60 else 0.0
+        pct20 = (last - closes[-21]) / closes[-21] * 100 if len(closes) > 21 and closes[-21] else 0.0
+
+        streak = _no_new_low_streak(lows[-20:])
+        made_new_low = lows[-1] < min(lows[:-1])
+
+        ma10 = last - (sum(closes[-10:]) / 10)
+        above_streak = 0
+        for i in range(len(closes) - 1, 9, -1):
+            if closes[i] > sum(closes[i - 9 : i + 1]) / 10:
+                above_streak += 1
+            else:
+                break
+        below_streak = 0
+        for i in range(len(closes) - 1, 9, -1):
+            if closes[i] <= sum(closes[i - 9 : i + 1]) / 10:
+                below_streak += 1
+            else:
+                break
+        today_low_touch_ma10 = lows[-1] <= sum(closes[-10:]) / 10
+        first_pullback = above_streak >= 1 and closes[-1] >= sum(closes[-10:]) / 10 and today_low_touch_ma10
+
+        if first_pullback:
+            ma_state, ma_ok = "第一次回踩10日线", True
+        elif closes[-1] > sum(closes[-10:]) / 10:
+            ma_state, ma_ok = f"站上10日线({above_streak}日)", True
+        elif below_streak <= 3:
+            ma_state, ma_ok = f"跌破10日线({below_streak}日)", False
+        else:
+            ma_state, ma_ok = f"10日线下方({below_streak}日),回踩打法失效", False
+
+        checks = [
+            {
+                "key": "left_align",
+                "label": "向左看齐(距5日最低)",
+                "value": f"+{dist:.1f}%",
+                "detail": f"5日最低 {min5:.2f} · 现价 {last:.2f}",
+                "ok": dist <= 5,
+                "note": "≤5%即在最低价区间,胜率高" if dist <= 5 else "偏离最低价过远,等回落",
+            },
+            {
+                "key": "drawdown",
+                "label": "超跌幅度(距60日高点)",
+                "value": f"-{drawdown:.1f}%",
+                "detail": f"60日高点 {high60:.2f}",
+                "ok": drawdown >= 40,
+                "note": "达标(≥40%)" if drawdown >= 40 else "未达超跌条件(需40%~60%)",
+            },
+            {
+                "key": "no_new_low",
+                "label": "不创新低",
+                "value": f"连续{streak}日",
+                "detail": "今日创新低" if made_new_low else "今日未创新低",
+                "ok": streak >= 3 and not made_new_low,
+                "note": "≥3日=震荡企稳" if streak >= 3 else "震荡尚未企稳",
+            },
+            {
+                "key": "ma10",
+                "label": "10日线状态",
+                "value": ma_state,
+                "detail": f"MA10 {sum(closes[-10:]) / 10:.2f} · 偏离{ma10:+.2f}",
+                "ok": ma_ok,
+                "note": "第一次回踩=进场信号" if first_pullback else "",
+            },
+            {
+                "key": "pct20",
+                "label": "近20日涨跌",
+                "value": f"{pct20:+.1f}%",
+                "detail": "",
+                "ok": None,
+                "note": "",
+            },
+        ]
+
+        if made_new_low and drawdown >= 40:
+            verdict = {
+                "title": "暴跌创新低日",
+                "tone": "warn",
+                "note": "超跌+创新低:顶尖高手抄底玩法,普通投资者观望为主",
+            }
+        elif made_new_low:
+            verdict = {"title": "今日创新低", "tone": "bad", "note": "单边下跌通道,不做波段"}
+        elif first_pullback:
+            verdict = {
+                "title": "回踩10日线·进场信号",
+                "tone": "good",
+                "note": "上升趋势第一次回踩10日线,大胆进场(仅第一次)",
+            }
+        elif streak >= 3 and dist <= 5 and drawdown >= 40:
+            verdict = {
+                "title": "向左看齐·进场区",
+                "tone": "good",
+                "note": "震荡企稳+超跌+最低价附近:战法核心进场条件齐备",
+            }
+        elif streak >= 3 and dist <= 5:
+            verdict = {
+                "title": "最低价附近·可关注",
+                "tone": "ok",
+                "note": "震荡企稳+贴近5日最低,但超跌幅度不足40%",
+            }
+        elif below_streak > 3:
+            verdict = {"title": "10日线下方", "tone": "bad", "note": "超3日收于均线下,切换震荡打法或观望"}
+        else:
+            verdict = {"title": "观望", "tone": "ok", "note": "进场条件不齐:等回踩10日线或贴近平5日最低"}
+
+        return {
+            "code": code,
+            "name": name,
+            "price": round(last, 2),
+            "checks": checks,
+            "verdict": verdict,
+        }
 
     def search_stocks(self, q: str, limit: int = 10) -> list[dict]:
         """按代码前缀或名称子串搜索全A股票,返回 [{code,name}],表缓存6小时。"""

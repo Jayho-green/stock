@@ -37,6 +37,7 @@
       <a class="lhb-entry" href="/lhb" title="龙虎榜机构资金">龙虎榜</a>
       <span id="screen-msg" class="screen-msg"></span>
       <span id="watch-count" class="metric-pill">0 自选</span>
+      <span id="band-temp-pill" class="metric-pill" title="波段战法市场温度：点击查看">温度 —</span>
       <span id="signal-count" class="metric-pill">0 信号</span>
       <span id="news-count-top" class="metric-pill">0 资讯</span>
       <span id="status" class="status">—</span>
@@ -172,6 +173,57 @@
               <thead><tr><th>信号</th><th>入场</th><th>方向</th><th>出场</th><th>收益</th></tr></thead>
               <tbody><tr><td colspan="5" class="flat">暂无回测</td></tr></tbody>
             </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="band-console">
+        <div class="band-head">
+          <div>
+            <span class="chart-label">BAND PLAYBOOK</span>
+            <h2>波段战法</h2>
+          </div>
+          <span id="band-market-time" class="band-time"></span>
+        </div>
+        <div class="band-grid">
+          <div class="band-card band-market">
+            <h3>市场温度 <small>(涨-跌)÷跌</small></h3>
+            <div class="band-temp-row">
+              <span id="band-temp-value" class="band-temp-value">—</span>
+              <span id="band-temp-level" class="band-badge">—</span>
+            </div>
+            <div id="band-temp-detail" class="band-detail">温度数据加载中…</div>
+            <div id="band-index-detail" class="band-detail">大盘体检加载中…</div>
+            <div id="band-temp-action" class="band-action"></div>
+          </div>
+          <div class="band-card band-stock">
+            <h3>个股体检 <small id="band-stock-title">点击左侧股票</small></h3>
+            <div id="band-stock-verdict" class="band-verdict"></div>
+            <ul id="band-stock-checks" class="band-checks"></ul>
+          </div>
+          <div class="band-card band-rules">
+            <h3>三大共振条件</h3>
+            <ul class="band-rule-list">
+              <li><b>大盘</b>震荡不创新低，连续3天=底部企稳；大盘暴跌后的底部是最佳位置</li>
+              <li><b>板块</b>不创新低、整体跌幅20%~30%，选最热赛道(AI/光模块/机器人)</li>
+              <li><b>个股</b>价格在低位：距3~5日最低价附近下单(向左看齐)，跌幅40%~60%</li>
+            </ul>
+            <h3>三个周期</h3>
+            <ul class="band-rule-list">
+              <li><b>超短线</b>T+0~T+5 · <b>超级波段</b>5~20日 · <b>中期波段</b>10~40日(赚30%~40%)</li>
+            </ul>
+          </div>
+          <div class="band-card band-rules">
+            <h3>进场·3570节奏</h3>
+            <ul class="band-rule-list">
+              <li>第一波建<b>3成</b> → 赚超5%加<b>5成</b> → 再确认加<b>7成</b> → 达标归零重来</li>
+              <li>亏钱绝不补仓，赚了才能加；单票仓位上限<b>10%</b></li>
+            </ul>
+            <h3>卖出·3221阵型</h3>
+            <ul class="band-rule-list">
+              <li>赚<b>12%</b>减30% · 赚<b>15%</b>减50% · 赚<b>20%+</b>全减</li>
+              <li>连涨3天先落袋；不涨第4~5天卖60%；硬止损<b>15%</b>；盈亏比1:1.5~1:2.2</li>
+            </ul>
           </div>
         </div>
       </section>

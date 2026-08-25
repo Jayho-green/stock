@@ -197,6 +197,16 @@ def create_app(
     def search_stocks(q: str, limit: int = 10):
         return {"results": service.search_stocks(q, max(1, min(limit, 20)))}
 
+    @app.get("/api/band/market")
+    def band_market():
+        return service.get_band_market()
+
+    @app.get("/api/band/stock")
+    def band_stock(code: str, name: str | None = None):
+        if not code.isdigit():
+            raise HTTPException(status_code=400, detail="股票代码必须是6位数字")
+        return service.get_band_stock(code, name)
+
     @app.get("/api/signals")
     def signals(limit: int = 50):
         rows = logstore.read_all(log_path)

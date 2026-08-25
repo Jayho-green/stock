@@ -286,6 +286,26 @@ def test_search_endpoint(tmp_path):
     assert r3.json()["results"] == []
 
 
+def test_band_market_and_stock_endpoints(tmp_path):
+    c = _client(tmp_path, manual_path=tmp_path / "watchlist.manual.toml")
+    r = c.get("/api/band/market")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["temperature"] is None  # FakeSource 无涨跌家数接口,优雅降级
+    assert body["index"] is None
+
+    r2 = c.get("/api/band/stock?code=000001")
+    assert r2.status_code == 200
+    data = r2.json()
+    assert data["code"] == "000001"
+    assert data["name"] == "平安银行"
+    assert isinstance(data["checks"], list) and len(data["checks"]) == 5
+    assert data["verdict"]["title"]
+
+    r3 = c.get("/api/band/stock?code=abc")
+    assert r3.status_code == 400
+
+
 class FakeRunner:
     def __init__(self):
         self._running = False

@@ -926,6 +926,88 @@ async function selectStock(code, name) {
     tr.classList.toggle("active", tr.dataset.code === code)
   );
   loadChart();
+  loadBandStock(code, name);
+}
+
+// ---- 波段战法 ----
+
+function bandToneClass(tone) {
+  return tone === "good" || tone === "ok" || tone === "bad" || tone === "warn" ? `tone-${tone}` : "";
+}
+
+async function loadBandMarket() {
+  const pill = document.getElementById("band-temp-pill");
+  const valueEl = document.getElementById("band-temp-value");
+  const levelEl = document.getElementById("band-temp-level");
+  try {
+    const data = await getJSON("/api/band/market");
+    const t = data.temperature;
+    if (t) {
+      valueEl.textContent = `${t.value}%`;
+      levelEl.textContent = t.level;
+      levelEl.className = `band-badge ${bandToneClass(t.tone)}`;
+      document.getElementById("band-temp-detail").innerHTML =
+        `上涨 <b>${t.up}</b> 家 · 下跌 <b>${t.down}</b> 家 · 平盘 <b>${t.flat}</b> 家` +
+        ` · 涨停 <b>${t.limit_up}</b> · 跌停 <b>${t.limit_down}</b>`;
+      document.getElementById("band-temp-action").textContent = `参考：${t.action}`;
+      if (pill) {
+        pill.textContent = `温度 ${t.value}% ${t.level}`;
+        pill.classList.toggle("hot", t.tone === "good");
+        pill.classList.toggle("cold", t.tone === "bad");
+        pill.title = `${t.level}：${t.action}`;
+      }
+      if (t.stat_time) document.getElementById("band-market-time").textContent = `数据 ${t.stat_time}`;
+    } else {
+      valueEl.textContent = "—";
+      levelEl.textContent = "无数据";
+      document.getElementById("band-temp-detail").textContent = "涨跌家数暂不可用";
+      if (pill) pill.textContent = "温度 —";
+    }
+    const idx = data.index;
+    if (idx && idx.close) {
+      document.getElementById("band-index-detail").innerHTML =
+        `大盘 上证 <b>${idx.close}</b> · <b>${idx.position}</b>(60日区间 ${idx.pos_pct}%) · ` +
+        `连续 <b>${idx.no_new_low_streak}</b> 日未创新低${idx.made_new_low ? "（今日创新低）" : ""} —— ${idx.note}`;
+    } else {
+      document.getElementById("band-index-detail").textContent = "大盘体检暂不可用";
+    }
+  } catch (e) {
+    if (pill) pill.textContent = "温度 —";
+  }
+}
+
+async function loadBandStock(code, name) {
+  const titleEl = document.getElementById("band-stock-title");
+  const verdictEl = document.getElementById("band-stock-verdict");
+  const listEl = document.getElementById("band-stock-checks");
+  if (!verdictEl || !listEl) return;
+  titleEl.textContent = "加载中…";
+  verdictEl.innerHTML = "";
+  listEl.innerHTML = "";
+  try {
+    const r = await getJSON(`/api/band/stock?code=${encodeURIComponent(code)}&name=${encodeURIComponent(name || "")}`);
+    if (r.code !== String(code).padStart(6, "0")) return;
+    titleEl.textContent = `${r.name}(${r.code}) ¥${r.price}`;
+    const v = r.verdict || {};
+    verdictEl.innerHTML =
+      `<span class="band-badge ${bandToneClass(v.tone)}">${v.title || "—"}</span>` +
+      (v.note ? `<p>${v.note}</p>` : "");
+    listEl.innerHTML = (r.checks || [])
+      .map((c) => {
+        const cls = c.ok === null || c.ok === undefined ? "na" : c.ok ? "ok" : "ng";
+        const mark = cls === "na" ? "·" : cls === "ok" ? "✓" : "✗";
+        const sub = [c.detail, c.note].filter(Boolean).join(" · ");
+        return (
+          `<li class="${cls}"><span class="mark">${mark}</span>` +
+          `<span class="label">${c.label}${sub ? `<small>${sub}</small>` : ""}</span>` +
+          `<span class="val">${c.value}</span></li>`
+        );
+      })
+      .join("");
+  } catch (e) {
+    titleEl.textContent = "体检失败";
+    verdictEl.innerHTML = `<span class="band-badge tone-bad">加载失败</span><p>${e.message}</p>`;
+  }
 }
 
 async function loadChart(options = {}) {
@@ -1621,7 +1703,15 @@ if (newsEnabled) loadNews();
 else setNewsEnabled(false);
 tick();
 pollScreen(); // 页面加载时若已有选股在跑,自动接上进度
+loadBandMarket();
 setInterval(tick, REFRESH_MS);
 setInterval(() => {
   if (newsEnabled) loadNews();
 }, NEWS_REFRESH_MS);
+setInterval(loadBandMarket, 5 * 60 * 1000);
+const bandPill = document.getElementById("band-temp-pill");
+if (bandPill) {
+  bandPill.addEventListener("click", () => {
+    document.querySelector(".band-console")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  });
+}
