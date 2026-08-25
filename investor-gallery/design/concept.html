@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>投资者档案 · 视觉概念</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; min-height: 100%; background: #08131a; color: #f2eee6; }
+      body { font-family: "Helvetica Neue", "Noto Sans SC", sans-serif; }
+      .page { min-height: 100vh; overflow: hidden; background:
+        radial-gradient(circle at 74% 13%, rgba(116, 41, 44, .16), transparent 26%),
+        linear-gradient(180deg, #0b1820 0%, #08131a 54%, #0a151c 100%); }
+      .nav { height: 88px; padding: 0 68px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(237, 232, 221, .13); }
+      .brand { display: flex; align-items: center; gap: 15px; }
+      .mark { width: 32px; height: 32px; border: 1px solid #b58b48; border-radius: 50%; position: relative; }
+      .mark::before, .mark::after { content: ""; position: absolute; background: #b58b48; }
+      .mark::before { width: 1px; height: 38px; left: 15px; top: -4px; transform: rotate(38deg); }
+      .mark::after { width: 18px; height: 1px; left: 7px; top: 15px; }
+      .brand strong { font-family: Georgia, serif; font-size: 17px; letter-spacing: .08em; }
+      .brand span { color: #88959a; font-size: 11px; letter-spacing: .22em; }
+      .navlinks { display: flex; gap: 32px; color: #aab3b5; font-size: 12px; letter-spacing: .12em; }
+      .hero { min-height: 620px; padding: 82px 68px 64px; display: grid; grid-template-columns: 46% 54%; position: relative; }
+      .hero-copy { position: relative; z-index: 1; padding-top: 45px; }
+      h1 { font-family: Georgia, "Songti SC", serif; font-size: 75px; font-weight: 400; line-height: .98; letter-spacing: -.055em; margin: 0; max-width: 620px; }
+      .stroke { display: block; color: transparent; -webkit-text-stroke: 1px rgba(242, 238, 230, .62); }
+      .hero-copy p { width: 380px; color: #9da7a9; font-size: 14px; line-height: 1.85; margin: 42px 0 0 4px; }
+      .hero-index { display: flex; align-items: center; gap: 18px; margin-top: 48px; color: #c5a368; font-size: 11px; letter-spacing: .18em; }
+      .hero-index::before { content: ""; width: 74px; height: 1px; background: #b58b48; }
+      .hero-portraits { position: relative; z-index: 5; height: 480px; display: block; padding-left: 96px; }
+      .portrait { position: relative; margin: 0; overflow: hidden; background: #17242a; box-shadow: 0 30px 80px rgba(0,0,0,.35); }
+      .portrait img { width: 100%; height: 100%; object-fit: cover; filter: saturate(.58) contrast(1.04); }
+      .portrait::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 60%, rgba(4,11,15,.72)); }
+      .p-main { width: 488px; height: 480px; z-index: 2; margin: 0; }
+      .p-left, .p-right { display: none; }
+      .caption { position: absolute; z-index: 3; left: 18px; bottom: 18px; font-family: Georgia, serif; font-size: 15px; }
+      .caption small { display: block; margin-top: 4px; color: #c5a368; font-family: sans-serif; font-size: 8px; letter-spacing: .15em; }
+      .orbit { position: absolute; width: 600px; height: 600px; border: 1px solid rgba(181,139,72,.22); border-radius: 50%; right: -40px; top: -70px; }
+      .orbit::before { content: ""; position: absolute; width: 9px; height: 9px; border-radius: 50%; background: #b58b48; left: 64px; top: 85px; box-shadow: 0 0 0 8px rgba(181,139,72,.09); }
+      .wall { position: relative; border-top: 1px solid rgba(237,232,221,.13); padding: 34px 68px 120px; }
+      .wall-head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 44px; }
+      .wall-head h2 { font-family: Georgia, "Songti SC", serif; font-size: 34px; font-weight: 400; margin: 0; }
+      .filters { display: flex; gap: 8px; }
+      .filter { border: 1px solid rgba(237,232,221,.15); padding: 10px 18px; border-radius: 999px; color: #95a0a3; font-size: 10px; letter-spacing: .1em; }
+      .filter.active { border-color: #b58b48; color: #e8d8b9; }
+      .mosaic { height: 810px; display: grid; grid-template-columns: 1.06fr .82fr 1.14fr .88fr; grid-template-rows: 1.15fr .72fr 1fr; gap: 14px; position: relative; }
+      .tile { overflow: hidden; position: relative; background: #122128; }
+      .tile img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(.2) saturate(.58) contrast(1.07); }
+      .tile::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 52%, rgba(5,12,16,.88)); }
+      .tile .meta { position: absolute; z-index: 2; left: 18px; right: 18px; bottom: 16px; }
+      .meta b { font-family: Georgia, "Songti SC", serif; font-size: 21px; font-weight: 400; }
+      .meta span { float: right; color: #c5a368; font-size: 9px; letter-spacing: .11em; margin-top: 8px; }
+      .t1 { grid-row: 1 / 3; }
+      .t2 { grid-column: 2; grid-row: 1; }
+      .t3 { grid-column: 3; grid-row: 1 / 3; }
+      .t4 { grid-column: 4; grid-row: 1; }
+      .t5 { grid-column: 2; grid-row: 2 / 4; }
+      .t6 { grid-column: 4; grid-row: 2; }
+      .t7 { grid-column: 1; grid-row: 3; }
+      .t8 { grid-column: 3 / 5; grid-row: 3; }
+      .trajectory { position: absolute; z-index: 4; pointer-events: none; inset: 122px 42px 44px; }
+      .trajectory svg { width: 100%; height: 100%; overflow: visible; }
+      .foot { height: 92px; border-top: 1px solid rgba(237,232,221,.11); display: flex; align-items: center; justify-content: space-between; color: #738187; font-size: 9px; letter-spacing: .12em; padding: 0 68px; }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <nav class="nav">
+        <div class="brand"><i class="mark"></i><div><strong>LONG VIEW</strong><br><span>投资者档案</span></div></div>
+        <div class="navlinks"><span>人物</span><span>流派</span><span>年表</span><span>关于</span></div>
+      </nav>
+      <section class="hero">
+        <div class="hero-copy">
+          <h1>那些把时间<br><span class="stroke">变成资本的人</span></h1>
+          <p>十二位改变现代投资思想的人。不是名言集，而是一面关于耐心、判断与风险的肖像墙。</p>
+          <div class="hero-index">THE INVESTOR ARCHIVE · 12 PORTRAITS</div>
+        </div>
+        <div class="hero-portraits">
+          <div class="orbit"></div>
+          <figure class="portrait p-left"><img src="../public/portraits/benjamin-graham.jpg"><figcaption class="caption">Benjamin Graham<small>安全边际</small></figcaption></figure>
+          <figure class="portrait p-main"><img src="../public/portraits/warren-buffett.jpg"><figcaption class="caption">Warren Buffett<small>长期复利</small></figcaption></figure>
+          <figure class="portrait p-right"><img src="../public/portraits/charlie-munger.jpg"><figcaption class="caption">Charlie Munger<small>多元思维</small></figcaption></figure>
+        </div>
+      </section>
+      <section class="wall">
+        <header class="wall-head"><h2>投资思想肖像墙</h2><div class="filters"><span class="filter active">全部</span><span class="filter">价值</span><span class="filter">宏观</span><span class="filter">量化</span><span class="filter">激进</span></div></header>
+        <div class="mosaic">
+          <article class="tile t1"><img src="../public/portraits/howard-marks.jpg"><div class="meta"><b>霍华德·马克斯</b><span>周期与风险</span></div></article>
+          <article class="tile t2"><img src="../public/portraits/george-soros.jpg"><div class="meta"><b>乔治·索罗斯</b><span>反身性</span></div></article>
+          <article class="tile t3"><img src="../public/portraits/ray-dalio.jpg"><div class="meta"><b>瑞·达利欧</b><span>原则与宏观</span></div></article>
+          <article class="tile t4"><img src="../public/portraits/jim-simons.jpg"><div class="meta"><b>吉姆·西蒙斯</b><span>量化</span></div></article>
+          <article class="tile t5"><img src="../public/portraits/john-bogle.jpg"><div class="meta"><b>约翰·博格</b><span>指数革命</span></div></article>
+          <article class="tile t6"><img src="../public/portraits/carl-icahn.jpg"><div class="meta"><b>卡尔·伊坎</b><span>激进投资</span></div></article>
+          <article class="tile t7"><img src="../public/portraits/cathie-wood.jpg"><div class="meta"><b>凯茜·伍德</b><span>颠覆式创新</span></div></article>
+          <article class="tile t8"><img src="../public/portraits/david-swensen.jpg"><div class="meta"><b>大卫·斯文森</b><span>资产配置</span></div></article>
+        </div>
+        <div class="trajectory">
+          <svg viewBox="0 0 1320 820" preserveAspectRatio="none"><path d="M-30 690 C 230 760, 250 410, 485 490 S 730 130, 930 260 S 1160 90, 1360 150" fill="none" stroke="#b58b48" stroke-width="1.2" opacity=".7"/><circle cx="485" cy="490" r="5" fill="#b58b48"/><circle cx="930" cy="260" r="5" fill="#b58b48"/></svg>
+        </div>
+      </section>
+      <footer class="foot"><span>LONG VIEW · INVESTOR ARCHIVE</span><span>PHOTOGRAPHS FROM WIKIMEDIA COMMONS</span></footer>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 420" role="img" aria-labelledby="title desc">
+  <title id="title">Necessities of Life primary logo</title>
+  <desc id="desc">The Necessities of Life wordmark with a connected AI-node N and a living leaf.</desc>
+  <g transform="translate(20 20) scale(.7421875)">
+    <rect x="24" y="24" width="464" height="464" rx="116" fill="#0B1020"/>
+    <path d="M158 352V160L354 352V160" fill="none" stroke="#F7F5EE" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="158" cy="352" r="27" fill="#C9FF4A"/>
+    <circle cx="256" cy="256" r="25" fill="#C9FF4A"/>
+    <circle cx="256" cy="256" r="9" fill="#0B1020"/>
+    <path d="M354 160C355 119 390 94 430 104C424 145 398 170 354 160Z" fill="#C9FF4A"/>
+    <path d="M354 160C372 143 391 128 412 116" fill="none" stroke="#0B1020" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <g font-family="Inter, SF Pro Display, Helvetica Neue, Arial, sans-serif">
+    <text x="450" y="187" fill="#0B1020" font-size="103" font-weight="720" letter-spacing="-4">necessities</text>
+    <text x="450" y="288" fill="#0B1020" font-size="77" font-weight="440" letter-spacing="-2">of <tspan fill="#7EAC00" font-weight="720">life</tspan></text>
+    <text x="454" y="347" fill="#657083" font-size="21" font-weight="650" letter-spacing="6">AI · TECHNOLOGY · IDEAS</text>
+  </g>
+</svg>

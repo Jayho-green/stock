@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>A股盯盘面板</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2308101e'/%3E%3Ccircle cx='11' cy='16' r='5' fill='%2366e5d7'/%3E%3Ccircle cx='21' cy='16' r='5' fill='%23a78bfa'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/static/style.css?v=24" />
+  <script src="/static/echarts.min.js?v=5.6.0"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">ZX</div>
+      <div class="brand-copy">
+        <span class="title">A股盯盘面板</span>
+        <span class="hint">知行多空 · 量价筛选 · 人工决策</span>
+      </div>
+    </div>
+    <div class="commandbar">
+      <div id="strategy" class="dropdown" data-value="">
+        <button id="dd-btn" class="dd-btn" type="button">
+          <span id="dd-label">选股方案</span><span class="dd-caret">▾</span>
+        </button>
+        <ul id="dd-menu" class="dd-menu" hidden></ul>
+      </div>
+      <div id="scope" class="dropdown" data-value="">
+        <button id="scope-btn" class="dd-btn" type="button">
+          <span id="scope-label">选股范围</span><span class="dd-caret">▾</span>
+        </button>
+        <ul id="scope-menu" class="dd-menu" hidden></ul>
+      </div>
+      <button id="screen-btn">立即选股</button>
+    </div>
+    <div class="top-status">
+      <a class="lhb-entry korea-entry" href="/korea" title="韩芯双雄实时看盘">韩芯</a>
+      <a class="lhb-entry" href="/lhb" title="龙虎榜机构资金">龙虎榜</a>
+      <span id="screen-msg" class="screen-msg"></span>
+      <span id="watch-count" class="metric-pill">0 自选</span>
+      <span id="signal-count" class="metric-pill">0 信号</span>
+      <span id="news-count-top" class="metric-pill">0 资讯</span>
+      <span id="status" class="status">—</span>
+    </div>
+  </header>
+
+  <section class="global-quote-strip" aria-label="韩国半导体实时行情">
+    <div class="global-quote-label">
+      <span>KR SEMI TAPE</span>
+      <b>韩国半导体</b>
+    </div>
+    <div id="global-quotes" class="global-quote-items">
+      <div class="global-quote-card loading"><span>三星电子</span><b>加载中</b><em>--</em></div>
+      <div class="global-quote-card loading"><span>SK海力士</span><b>加载中</b><em>--</em></div>
+    </div>
+    <div id="global-quotes-time" class="global-quote-time">8秒刷新</div>
+  </section>
+
+  <main id="workspace">
+    <section id="left-sidebar" class="left">
+      <button id="left-expand-btn" class="rail-tab left-rail-tab" type="button" aria-label="展开自选池">
+        <span>自选池</span>
+        <b id="watch-count-rail">0</b>
+      </button>
+      <div class="panel watch-panel">
+        <div class="panel-head">
+          <div>
+            <h2>自选池</h2>
+            <p>分钟信号与盘中强弱</p>
+          </div>
+          <div class="panel-actions">
+            <span id="watch-count-card" class="panel-count">0</span>
+            <button id="left-collapse-btn" class="collapse-btn" type="button" aria-label="收起自选池" aria-expanded="true">‹</button>
+          </div>
+        </div>
+        <div class="watch-content">
+          <div class="watch-add">
+            <div class="watch-search">
+              <input id="watch-search" autocomplete="off" placeholder="名称/代码 搜索加入" />
+              <ul id="watch-search-menu" class="dd-menu watch-search-menu" hidden></ul>
+            </div>
+            <button id="watch-add-btn" type="button">加入</button>
+            <span id="watch-add-msg"></span>
+          </div>
+          <div class="table-wrap">
+            <table id="quotes">
+              <thead>
+                <tr><th>名称</th><th>价格</th><th>涨跌</th><th>量比</th><th>RSI</th><th>信号</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="panel aux-panel">
+        <div class="aux-tabs" role="tablist" aria-label="辅助信息">
+          <button class="aux-tab active" type="button" role="tab" aria-selected="true" data-aux-target="signals-pane">
+            信号提醒 <span id="signal-count-card">0</span>
+          </button>
+          <button class="aux-tab" type="button" role="tab" aria-selected="false" data-aux-target="history-pane">
+            选股历史 <span id="history-count-card">0</span>
+          </button>
+        </div>
+        <div id="signals-pane" class="aux-pane active" role="tabpanel">
+          <ul id="signals"></ul>
+        </div>
+        <div id="history-pane" class="aux-pane" role="tabpanel">
+          <ul id="screen-history"></ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="right panel chart-panel">
+      <div class="chart-head">
+        <div class="chart-title-block">
+          <span class="chart-label">MARKET TAPE</span>
+          <h2 id="chart-title">点击左侧股票查看K线</h2>
+        </div>
+        <div class="chart-actions">
+          <div class="chart-mode" role="group" aria-label="K线周期">
+            <button id="mode-minute" class="active" type="button" data-period="minute">分钟K</button>
+            <button id="mode-daily" type="button" data-period="daily">日K</button>
+          </div>
+          <div class="indicator-mode" role="group" aria-label="副图指标">
+            <button class="active" type="button" data-indicator="rsi">RSI</button>
+            <button type="button" data-indicator="kdj">KDJ</button>
+          </div>
+        </div>
+      </div>
+      <div id="chart"></div>
+      <section class="backtest-console">
+        <div class="backtest-head">
+          <div>
+            <span class="chart-label">BACKTEST</span>
+            <h2>回测实验室</h2>
+          </div>
+          <span id="backtest-msg"></span>
+        </div>
+        <div class="backtest-controls">
+          <label>
+            <span>股票</span>
+            <input id="backtest-code" inputmode="numeric" autocomplete="off" placeholder="000001" />
+          </label>
+          <label>
+            <span>规则</span>
+            <select id="backtest-rule"></select>
+          </label>
+          <label>
+            <span>回看</span>
+            <input id="backtest-days" type="number" min="60" max="2500" step="30" value="365" />
+          </label>
+          <label>
+            <span>持有</span>
+            <input id="backtest-forward" type="number" min="1" max="60" value="5" />
+          </label>
+          <label>
+            <span>成本%</span>
+            <input id="backtest-cost" type="number" min="0" max="10" step="0.01" value="0.13" />
+          </label>
+          <button id="backtest-btn" type="button">开始回测</button>
+        </div>
+        <div class="backtest-result">
+          <div class="bt-metrics">
+            <div><span>交易</span><b id="bt-trades">-</b></div>
+            <div><span>胜率</span><b id="bt-win">-</b></div>
+            <div><span>均值</span><b id="bt-avg">-</b></div>
+            <div><span>累计</span><b id="bt-total">-</b></div>
+            <div><span>回撤</span><b id="bt-dd">-</b></div>
+          </div>
+          <div id="backtest-equity"></div>
+          <div class="bt-trade-wrap">
+            <table id="backtest-trades">
+              <thead><tr><th>信号</th><th>入场</th><th>方向</th><th>出场</th><th>收益</th></tr></thead>
+              <tbody><tr><td colspan="5" class="flat">暂无回测</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <aside id="news-sidebar" class="panel news-panel">
+      <button id="news-expand-btn" class="rail-tab news-rail-tab" type="button" aria-label="展开今日资讯">
+        <span>今日资讯</span>
+        <b id="news-count-rail">0</b>
+      </button>
+      <div class="panel-head news-head">
+        <div>
+          <span class="chart-label">NEWSWIRE</span>
+          <h2>今日资讯</h2>
+          <p id="news-meta">加载中</p>
+        </div>
+        <div class="news-actions">
+          <label class="news-toggle" title="关闭后不再拉取今日资讯">
+            <input id="news-enabled" type="checkbox" checked />
+            <span></span>
+          </label>
+          <span id="news-count" class="panel-count">0</span>
+          <button id="news-refresh" type="button">刷新</button>
+          <button id="news-collapse-btn" class="collapse-btn" type="button" aria-label="收起今日资讯" aria-expanded="true">›</button>
+        </div>
+      </div>
+      <div class="news-content">
+        <div class="news-filters" role="group" aria-label="资讯筛选">
+          <button class="active" type="button" data-tag="全部">全部</button>
+          <button type="button" data-tag="A股">A股</button>
+          <button type="button" data-tag="政策">政策</button>
+          <button type="button" data-tag="AI">AI</button>
+          <button type="button" data-tag="芯片">芯片</button>
+          <button type="button" data-tag="新能源">新能源</button>
+          <button type="button" data-tag="海外">海外</button>
+        </div>
+        <div id="news-sources" class="news-sources"></div>
+        <ol id="news-list" class="news-list"></ol>
+      </div>
+    </aside>
+  </main>
+
+  <script src="/static/global_quotes.js?v=1"></script>
+  <script src="/static/app.js?v=28"></script>
+</body>
+</html>

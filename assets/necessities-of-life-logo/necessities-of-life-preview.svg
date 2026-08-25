@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1200" role="img" aria-labelledby="title">
+  <title id="title">Necessities of Life logo presentation</title>
+  <rect width="1600" height="1200" fill="#F4F1E9"/>
+  <circle cx="1398" cy="-30" r="310" fill="#C9FF4A" opacity=".82"/>
+  <text x="110" y="108" fill="#657083" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="5">BRAND CONCEPT / 01</text>
+
+  <g transform="translate(90 170)">
+    <rect width="1420" height="470" rx="56" fill="#FFFFFF"/>
+    <g transform="translate(80 54) scale(.70)">
+      <rect x="24" y="24" width="464" height="464" rx="116" fill="#0B1020"/>
+      <path d="M158 352V160L354 352V160" fill="none" stroke="#F7F5EE" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="158" cy="352" r="27" fill="#C9FF4A"/>
+      <circle cx="256" cy="256" r="25" fill="#C9FF4A"/>
+      <circle cx="256" cy="256" r="9" fill="#0B1020"/>
+      <path d="M354 160C355 119 390 94 430 104C424 145 398 170 354 160Z" fill="#C9FF4A"/>
+      <path d="M354 160C372 143 391 128 412 116" fill="none" stroke="#0B1020" stroke-width="8" stroke-linecap="round"/>
+    </g>
+    <g font-family="Inter, SF Pro Display, Helvetica Neue, Arial, sans-serif">
+      <text x="500" y="204" fill="#0B1020" font-size="104" font-weight="720" letter-spacing="-4">necessities</text>
+      <text x="500" y="303" fill="#0B1020" font-size="74" font-weight="440" letter-spacing="-2">of <tspan fill="#7EAC00" font-weight="720">life</tspan></text>
+      <text x="504" y="366" fill="#657083" font-size="20" font-weight="650" letter-spacing="6">AI · TECHNOLOGY · IDEAS</text>
+    </g>
+  </g>
+
+  <g transform="translate(90 700)">
+    <rect width="690" height="390" rx="56" fill="#0B1020"/>
+    <g transform="translate(82 44) scale(.58)">
+      <path d="M158 352V160L354 352V160" fill="none" stroke="#F7F5EE" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="158" cy="352" r="27" fill="#C9FF4A"/>
+      <circle cx="256" cy="256" r="25" fill="#C9FF4A"/>
+      <circle cx="256" cy="256" r="9" fill="#0B1020"/>
+      <path d="M354 160C355 119 390 94 430 104C424 145 398 170 354 160Z" fill="#C9FF4A"/>
+      <path d="M354 160C372 143 391 128 412 116" fill="none" stroke="#0B1020" stroke-width="8" stroke-linecap="round"/>
+    </g>
+    <text x="388" y="166" fill="#F7F5EE" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="40" font-weight="720">smart.</text>
+    <text x="388" y="218" fill="#F7F5EE" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="40" font-weight="720">useful.</text>
+    <text x="388" y="270" fill="#C9FF4A" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="40" font-weight="720">alive.</text>
+  </g>
+
+  <g transform="translate(830 700)">
+    <rect width="680" height="390" rx="56" fill="#DDE4F0"/>
+    <circle cx="196" cy="195" r="134" fill="#0B1020"/>
+    <g transform="translate(58 58) scale(.54)">
+      <path d="M158 352V160L354 352V160" fill="none" stroke="#F7F5EE" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="158" cy="352" r="27" fill="#C9FF4A"/>
+      <circle cx="256" cy="256" r="25" fill="#C9FF4A"/>
+      <circle cx="256" cy="256" r="9" fill="#0B1020"/>
+      <path d="M354 160C355 119 390 94 430 104C424 145 398 170 354 160Z" fill="#C9FF4A"/>
+      <path d="M354 160C372 143 391 128 412 116" fill="none" stroke="#0B1020" stroke-width="8" stroke-linecap="round"/>
+    </g>
+    <text x="378" y="169" fill="#0B1020" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="22" font-weight="700" letter-spacing="3">AVATAR READY</text>
+    <text x="378" y="219" fill="#657083" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="19">Readable at small sizes.</text>
+    <text x="378" y="254" fill="#657083" font-family="Inter, Helvetica Neue, Arial, sans-serif" font-size="19">Built for tech content.</text>
+  </g>
+</svg>

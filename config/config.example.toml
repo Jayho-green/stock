@@ -1,0 +1,53 @@
+# A股盯盘助手配置示例。复制为 config/config.toml 后修改。
+
+poll_interval_seconds = 30   # 盯盘轮询间隔(秒),建议 30~60
+cooldown_seconds = 900       # 同股同信号去重冷却(秒)
+
+[channels]
+terminal = true              # 终端打印
+desktop = true               # macOS 桌面通知
+
+# 自选股名单(可由 run_screen.py 自动覆盖/追加)
+[[watchlist]]
+code = "000001"
+name = "平安银行"
+
+[[watchlist]]
+code = "600519"
+name = "贵州茅台"
+
+# 盯盘规则阈值(传给 MONITOR_RULES)
+[rules]
+ma_short = 5
+ma_long = 20
+rsi_period = 14
+rsi_oversold = 30
+rsi_overbought = 70
+macd_fast = 12
+macd_slow = 26
+macd_signal = 9
+vol_window = 5
+vol_spike_mult = 2.0
+
+# 选股配置(传给 SCREEN_RULES + 选股器)
+[screen]
+strategy = "zhixing"    # 定时任务默认方案:default(均线+放量)/ zhixing(知行多空线)
+scope = "star_chinext"  # 选股范围:star_chinext/main_board/hs300/star50/zz500/zz1000
+prefixes = ["688", "689", "300", "301"]  # 仅 star_chinext 范围使用:科创板+创业板
+workers = 5             # 并发拉日线的线程数;免费接口易限流,建议 5 左右
+lookback_days = 250     # 拉取近多少自然日的日线(MA114 需 ≥114 交易日)
+top_n = 20              # 最多保留几只(超出按当日量比降序截取)
+timeout_seconds = 900   # 整批选股最长等待时间;超时返回已完成部分,避免接口卡死
+max_initial_failures = 30  # 开始阶段连续失败多少只后熔断,避免数据源异常时刷接口
+min_failure_check = 50     # 至少处理多少只后检查整体失败率
+max_failure_rate = 0.9     # 失败率达到该比例后熔断
+vol_lookback = 5        # 排序用:当日量比的回看天数
+
+# 知行合一选股标准参数
+zx_ema = 10                          # 知行短期趋势线:EMA(EMA(C,10),10)
+zx_ma_periods = [14, 28, 57, 114]    # 知行多空线:这些 MA 的平均
+kdj_n = 9
+kdj_k = 3
+kdj_d = 3
+j_low_window = 20      # J 值看近多少日的最低
+j_low_tol = 1.05       # J 贴近最低的容差(A 方案:高于最低 5% 以内)

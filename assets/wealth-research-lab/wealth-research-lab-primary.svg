@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 420" role="img" aria-labelledby="title desc">
+  <title id="title">财富研究所主标志</title>
+  <desc id="desc">财富研究所中文标志，搭配放大镜与数据柱图形。</desc>
+  <g transform="translate(20 20) scale(.7421875)">
+    <rect x="24" y="24" width="464" height="464" rx="116" fill="#0C3B2E"/>
+    <circle cx="237" cy="222" r="119" fill="none" stroke="#F6F0E4" stroke-width="30"/>
+    <path d="M321 306L390 375" fill="none" stroke="#D6A642" stroke-width="40" stroke-linecap="round"/>
+    <rect x="166" y="236" width="38" height="62" rx="8" fill="#F6F0E4"/>
+    <rect x="218" y="197" width="38" height="101" rx="8" fill="#F6F0E4"/>
+    <rect x="270" y="151" width="38" height="147" rx="8" fill="#D6A642"/>
+    <path d="M176 216L233 177L288 129" fill="none" stroke="#D6A642" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="176" cy="216" r="9" fill="#D6A642"/>
+    <circle cx="233" cy="177" r="9" fill="#D6A642"/>
+    <circle cx="288" cy="129" r="9" fill="#D6A642"/>
+  </g>
+  <g font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif">
+    <text x="450" y="190" fill="#10251E" font-size="116" font-weight="700" letter-spacing="5">财富<tspan fill="#0C3B2E">研究所</tspan></text>
+    <text x="456" y="276" fill="#9A742A" font-family="Avenir Next, Montserrat, Arial, sans-serif" font-size="28" font-weight="700" letter-spacing="7">WEALTH RESEARCH LAB</text>
+    <text x="458" y="341" fill="#68766F" font-size="23" font-weight="600" letter-spacing="7">理财 · 投资 · 认知</text>
+  </g>
+</svg>

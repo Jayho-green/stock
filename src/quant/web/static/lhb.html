@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>龙虎榜 · 机构资金</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2308101e'/%3E%3Ccircle cx='11' cy='16' r='5' fill='%2366e5d7'/%3E%3Ccircle cx='21' cy='16' r='5' fill='%23a78bfa'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/static/style.css?v=24" />
+  <link rel="stylesheet" href="/static/lhb.css?v=5" />
+  <script src="/static/echarts.min.js?v=5.6.0"></script>
+</head>
+<body class="lhb-body">
+  <header class="lhb-topbar">
+    <div class="brand">
+      <div class="brand-mark">榜</div>
+      <div class="brand-copy">
+        <span class="title">龙虎榜 · 机构资金</span>
+        <span class="hint">机构专用席位 · 交易所披露 · 仅覆盖上榜股</span>
+      </div>
+    </div>
+    <div class="lhb-datebar" role="group" aria-label="日期选择">
+      <button id="date-prev" type="button" title="前一交易日" aria-label="前一交易日">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5"/></svg>
+      </button>
+      <input id="date-input" type="date" aria-label="选择日期" />
+      <button id="date-next" type="button" title="后一交易日" aria-label="后一交易日">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m7.5 4.5 5.5 5.5-5.5 5.5"/></svg>
+      </button>
+      <button id="date-latest" type="button">最新</button>
+      <span id="lhb-msg" class="screen-msg"></span>
+    </div>
+    <div class="top-status">
+      <span id="lhb-status" class="status">加载中</span>
+      <a class="lhb-backlink" href="/korea">韩芯</a>
+      <a class="lhb-backlink" href="/">A股面板</a>
+    </div>
+  </header>
+
+  <section class="global-quote-strip" aria-label="韩国半导体实时行情">
+    <div class="global-quote-label">
+      <span>KR SEMI TAPE</span>
+      <b>韩国半导体</b>
+    </div>
+    <div id="global-quotes" class="global-quote-items">
+      <div class="global-quote-card loading"><span>三星电子</span><b>加载中</b><em>--</em></div>
+      <div class="global-quote-card loading"><span>SK海力士</span><b>加载中</b><em>--</em></div>
+    </div>
+    <div id="global-quotes-time" class="global-quote-time">8秒刷新</div>
+  </section>
+
+  <main class="lhb-main">
+    <section class="lhb-kpis panel" id="kpis" aria-label="当日汇总">
+      <div class="kpi"><span>上榜股票</span><b id="kpi-stocks">–</b><i>只</i></div>
+      <div class="kpi"><span>机构参与</span><b id="kpi-org">–</b><i>只</i></div>
+      <div class="kpi"><span>机构买入</span><b id="kpi-buy" class="up">–</b><i>合计</i></div>
+      <div class="kpi"><span>机构卖出</span><b id="kpi-sell" class="down">–</b><i>合计</i></div>
+      <div class="kpi kpi-net"><span>机构净买入</span><b id="kpi-net">–</b><i id="kpi-net-sub">净买 – / 净卖 –</i></div>
+    </section>
+
+    <section class="panel lhb-trend-panel">
+      <div class="panel-head">
+        <div>
+          <span class="chart-label">FLOW TAPE</span>
+          <h2>机构板块资金走势</h2>
+          <p id="trend-note">读取已归档龙虎榜,展示机构专用席位在板块间的日/周净额变化</p>
+        </div>
+        <div class="lhb-chart-mode trend-mode" role="group" aria-label="趋势周期">
+          <button id="trend-daily" class="active" type="button" data-trend-period="daily">日线</button>
+          <button id="trend-weekly" type="button" data-trend-period="weekly">周线</button>
+        </div>
+      </div>
+      <div id="trend-chart"></div>
+    </section>
+
+    <section class="panel lhb-chart-panel">
+      <div class="panel-head">
+        <div>
+          <span class="chart-label">SECTOR FLOW</span>
+          <h2>板块机构净流入</h2>
+          <p>色块=板块机构净买入(元) · 点击板块过滤下方个股</p>
+        </div>
+        <div class="lhb-chart-mode" role="group" aria-label="图表模式">
+          <button id="mode-treemap" class="active" type="button">板块图</button>
+          <button id="mode-bar" type="button">排行</button>
+        </div>
+      </div>
+      <div id="sector-chart"></div>
+    </section>
+
+    <section class="panel lhb-table-panel">
+      <div class="panel-head lhb-table-head">
+        <div>
+          <span class="chart-label">STOCK DETAIL</span>
+          <h2>个股机构流入流出</h2>
+        </div>
+        <div class="lhb-filters" role="group" aria-label="筛选">
+          <span id="sector-chip" class="sector-chip" hidden>
+            <em id="sector-chip-name"></em><button id="sector-chip-x" type="button" aria-label="清除板块过滤">×</button>
+          </span>
+          <button class="active" type="button" data-filter="all">全部</button>
+          <button type="button" data-filter="org">机构参与</button>
+          <button type="button" data-filter="net_buy">机构净买</button>
+          <button type="button" data-filter="net_sell">机构净卖</button>
+          <input id="lhb-search" autocomplete="off" placeholder="搜代码/名称/板块" />
+        </div>
+      </div>
+      <div class="table-wrap lhb-table-wrap">
+        <table id="lhb-table">
+          <thead>
+            <tr>
+              <th data-sort="name" class="sortable">名称</th>
+              <th data-sort="industry" class="sortable">板块</th>
+              <th data-sort="close" class="sortable num">收盘</th>
+              <th data-sort="change_pct" class="sortable num">涨跌</th>
+              <th data-sort="org_buy" class="sortable num">机构买入</th>
+              <th data-sort="org_sell" class="sortable num">机构卖出</th>
+              <th data-sort="org_net" class="sortable num">机构净额</th>
+              <th data-sort="org_seats" class="sortable num">席位·买/卖</th>
+              <th data-sort="lhb_net_buy" class="sortable num">龙虎榜净买</th>
+              <th data-sort="turnover" class="sortable num">换手</th>
+            </tr>
+          </thead>
+          <tbody id="lhb-tbody">
+            <tr><td colspan="10" class="flat">加载中…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="lhb-footnote">
+        数据:东方财富龙虎榜(交易所每日约 17:30 披露)。机构买卖额为「机构专用」席位真实成交,
+        <b>仅覆盖当日上榜股票</b>,未上榜个股无机构数据;同股多榜单口径不同,金额取主榜单。红买绿卖。
+      </p>
+    </section>
+  </main>
+
+  <script src="/static/global_quotes.js?v=1"></script>
+  <script src="/static/lhb.js?v=5"></script>
+</body>
+</html>
