@@ -201,6 +201,10 @@ def create_app(
     def band_market():
         return service.get_band_market()
 
+    @app.get("/api/power/monitor")
+    def power_monitor(force: bool = False):
+        return service.get_power_monitor(force=force)
+
     @app.get("/api/band/stock")
     def band_stock(code: str, name: str | None = None):
         if not code.isdigit():
@@ -277,6 +281,8 @@ def build_default_app() -> FastAPI:
         global_archive_path=DEFAULT_GLOBAL_ARCHIVE,
         news_cache_path=DEFAULT_NEWS_CACHE,
         news_events_path=DEFAULT_NEWS_EVENTS,
+        power_watch_path=ROOT / "config" / "power_watch.toml",
+        power_state_path=ROOT / "data" / "power_monitor.json",
     )
     runner = ScreenRunner(
         lambda strategy, scope, progress, stop_check: run_full_screen(

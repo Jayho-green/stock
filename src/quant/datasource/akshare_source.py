@@ -273,6 +273,41 @@ class AkshareSource(DataSource):
         # _normalize_tx_daily 已兼容新版自带 volume 列的结构
         return _normalize_tx_daily(raw)
 
+    def get_realtime_board(self, codes: list[str] | None = None) -> pd.DataFrame:
+        """全A实时快照(含涨跌幅),按 codes 过滤;codes 为空返回全部。"""
+        with _AKSHARE_LOCK:
+            import akshare as ak
+
+            try:
+                raw = _with_retry(ak.stock_zh_a_spot_em, tries=self.tries, base=self.retry_base)
+            except Exception:
+                raw = _with_retry(ak.stock_zh_a_spot, tries=1, base=self.retry_base)
+        df = raw.rename(columns={"代码": "code", "名称": "name", "最新价": "price", "涨跌幅": "pct"})
+        df = df[["code", "name", "price", "pct"]].copy()
+        df["code"] = df["code"].astype(str).str.replace(r"^(sh|sz|bj)", "", regex=True).str.zfill(6)
+        if codes is not None:
+            df = df[df["code"].isin([str(c).zfill(6) for c in codes])]
+        return df.reset_index(drop=True)
+
+    def get_industry_board_cons(self, board: str = "电力行业") -> pd.DataFrame:
+        """东财行业板块成分股,含成交额/换手率,用于板块活跃股筛选。"""
+        with _AKSHARE_LOCK:
+            import akshare as ak
+
+            raw = _with_retry(
+                lambda: ak.stock_board_industry_cons_em(symbol=board, timeout=self.timeout),
+                tries=self.tries,
+                base=self.retry_base,
+            )
+        df = raw.rename(
+            columns={"代码": "code", "名称": "name", "最新价": "price", "涨跌幅": "pct", "成交额": "amount", "换手率": "turnover"}
+        )
+        cols = ["code", "name", "price", "pct", "amount", "turnover"]
+        for c in ("price", "pct", "amount", "turnover"):
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c], errors="coerce")
+        return df[[c for c in cols if c in df.columns]].copy()
+
     def get_realtime(self, codes: list[str]) -> pd.DataFrame:
         with _AKSHARE_LOCK:
             import akshare as ak

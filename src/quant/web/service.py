@@ -22,7 +22,7 @@ from ..indicators import add_kdj, add_ma, add_rsi, add_volume_features, add_zhix
 from ..signals.backtest_rules import BACKTEST_ENTRY_TIMING, BACKTEST_ONLY_RULES
 from ..signals.engine import run_rules
 from ..signals.monitor_rules import MONITOR_RULES
-from ..watchlist import add_watchlist_item
+from ..watchlist import add_watchlist_item, read_watchlist_file, write_watchlist_file
 from ..kline_cache import PostCloseKlineCache, effective_market_date
 
 
@@ -91,6 +91,39 @@ GLOBAL_QUOTE_TARGETS = [
         "accent": "violet",
     },
 ]
+
+
+POWER_BOARD = "电力行业"
+POWER_WATCH_SIZE = 20
+# 东财板块接口不可用时的电力行业活跃股兜底名单
+POWER_FALLBACK = [
+    ("600011", "华能国际"), ("600027", "华电国际"), ("600795", "国电电力"),
+    ("601991", "大唐发电"), ("601985", "中国核电"), ("003816", "中国广核"),
+    ("600900", "长江电力"), ("600886", "国投电力"), ("600674", "川投能源"),
+    ("600023", "浙能电力"), ("600642", "申能股份"), ("600021", "上海电力"),
+    ("000883", "湖北能源"), ("000791", "甘肃能源"), ("002039", "黔源电力"),
+    ("600101", "明星电力"), ("600744", "华银电力"), ("600505", "西昌电力"),
+    ("600644", "乐山电力"), ("600969", "郴电国际"),
+]
+
+
+def _limit_up_threshold(code: str, name: str) -> float:
+    """A股涨停幅度%:主板10,创业板/科创板20,北交所30,ST 5。"""
+    if "ST" in name.upper():
+        return 5.0
+    if code.startswith(("30", "68")):
+        return 20.0
+    if code.startswith(("83", "87", "88", "43", "92")):
+        return 30.0
+    return 10.0
+
+
+def _in_trading_window(now: datetime) -> bool:
+    """工作日 9:25~15:00 视为交易时段(电力监控窗口)。"""
+    if now.weekday() >= 5:
+        return False
+    t = now.hour * 60 + now.minute
+    return 9 * 60 + 25 <= t <= 15 * 60
 
 
 def _temp_level(t: float) -> dict:
@@ -167,6 +200,8 @@ class DashboardService:
         global_archive_path=None,
         news_cache_path=None,
         news_events_path=None,
+        power_watch_path=None,
+        power_state_path=None,
     ):
         self.source = source
         self.cfg = cfg
@@ -190,6 +225,9 @@ class DashboardService:
         self._global_cache = TTLCache(7, now)
         self._long_cache = TTLCache(6 * 3600, now)
         self._band_cache = TTLCache(300, now)
+        self.power_watch_path = Path(power_watch_path) if power_watch_path is not None else None
+        self.power_state_path = Path(power_state_path) if power_state_path is not None else None
+        self._power_state = self._load_power_state()
         if self.news_event_store is not None:
             cached_news = self._read_news_cache()
             if cached_news and cached_news.get("items"):
@@ -368,6 +406,138 @@ class DashboardService:
             "price": round(last, 2),
             "checks": checks,
             "verdict": verdict,
+        }
+
+    # ---- 电力板块涨停监控 ----
+
+    def _load_power_state(self) -> dict:
+        state = {"date": "", "hits": {}}
+        if self.power_state_path is not None and self.power_state_path.exists():
+            try:
+                data = json.loads(self.power_state_path.read_text(encoding="utf-8"))
+                today = self.clock().strftime("%Y-%m-%d")
+                if data.get("date") == today:
+                    state = {"date": data["date"], "hits": data.get("hits") or {}}
+            except Exception:
+                pass
+        return state
+
+    def _save_power_state(self) -> None:
+        if self.power_state_path is None:
+            return
+        try:
+            self.power_state_path.parent.mkdir(parents=True, exist_ok=True)
+            self.power_state_path.write_text(
+                json.dumps(self._power_state, ensure_ascii=False), encoding="utf-8"
+            )
+        except Exception:
+            pass
+
+    def _power_watch_list(self, force: bool = False) -> list[dict]:
+        """电力板块活跃股名单:缓存→磁盘→东财板块成分(按成交额取前20,成功落盘)→内置兜底。"""
+        cached = self._long_cache.get("power_watch")
+        if cached is not None and not force:
+            return cached
+        watch: list[dict] = []
+        if self.power_watch_path is not None and self.power_watch_path.exists() and not force:
+            try:
+                watch = read_watchlist_file(self.power_watch_path)
+            except Exception:
+                watch = []
+        board_api = getattr(self.source, "get_industry_board_cons", None)
+        if not watch and callable(board_api):
+            try:
+                df = self.source.get_industry_board_cons(POWER_BOARD)
+                df = df[df["name"].astype(str).str.upper().str.contains("ST") == False]
+                df = df.sort_values("amount", ascending=False).head(POWER_WATCH_SIZE)
+                watch = [
+                    {"code": str(c).zfill(6), "name": str(n)}
+                    for c, n in zip(df["code"], df["name"])
+                ]
+                if watch and self.power_watch_path is not None:
+                    try:
+                        write_watchlist_file(watch, self.power_watch_path)
+                    except Exception:
+                        pass
+            except Exception:
+                watch = []
+        if not watch:
+            watch = [{"code": c, "name": n} for c, n in POWER_FALLBACK]
+        self._long_cache.set("power_watch", watch)
+        return watch
+
+    def _power_realtime(self, codes: list[str]) -> dict:
+        """名单股票实时行情 {code: {name,price,pct}},30秒缓存。"""
+        key = "power_realtime"
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+        quotes: dict[str, dict] = {}
+        realtime_api = getattr(self.source, "get_realtime_board", None)
+        if callable(realtime_api):
+            try:
+                df = self.source.get_realtime_board(codes)
+                for _, row in df.iterrows():
+                    quotes[str(row["code"]).zfill(6)] = {
+                        "name": str(row.get("name", "")),
+                        "price": float(row.get("price") or 0),
+                        "pct": float(row.get("pct") or 0),
+                    }
+            except Exception:
+                pass
+        self._cache.set(key, quotes)
+        return quotes
+
+    def get_power_monitor(self, force: bool = False) -> dict:
+        """电力板块监控:活跃名单 + 当日涨停检测(开盘即盯,涨停记录当日保留,炸板标注)。"""
+        if force:
+            self._cache.set("power_realtime", None)
+        watch = self._power_watch_list(force=force)
+        now = self.clock()
+        trading = _in_trading_window(now)
+        today = now.strftime("%Y-%m-%d")
+        if self._power_state["date"] != today:
+            self._power_state = {"date": today, "hits": {}}
+            self._save_power_state()
+
+        if trading and watch:
+            quotes = self._power_realtime([w["code"] for w in watch])
+            if quotes:
+                now_s = now.strftime("%H:%M")
+                changed = False
+                for code, q in quotes.items():
+                    name = q["name"]
+                    if q["pct"] >= _limit_up_threshold(code, name) - 0.12:
+                        hit = self._power_state["hits"].get(code)
+                        if hit is None:
+                            self._power_state["hits"][code] = {
+                                "code": code,
+                                "name": name,
+                                "price": q["price"],
+                                "pct": q["pct"],
+                                "time": now_s,
+                                "broken": False,
+                            }
+                            changed = True
+                        else:
+                            hit.update(price=q["price"], pct=q["pct"], broken=False)
+                            changed = True
+                    elif code in self._power_state["hits"]:
+                        hit = self._power_state["hits"][code]
+                        if not hit.get("broken"):
+                            hit["broken"] = True
+                            hit["pct"] = q["pct"]
+                            changed = True
+                if changed:
+                    self._save_power_state()
+
+        hits = list(self._power_state["hits"].values())
+        return {
+            "watch": watch,
+            "hits": hits,
+            "hit": bool(hits),
+            "trading": trading,
+            "updated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
         }
 
     def search_stocks(self, q: str, limit: int = 10) -> list[dict]:

@@ -929,6 +929,56 @@ async function selectStock(code, name) {
   loadBandStock(code, name);
 }
 
+// ---- 电力板块涨停监控 ----
+
+function powerRefreshMs() {
+  const now = new Date();
+  const day = now.getDay();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  if (day >= 1 && day <= 5) {
+    if (mins >= 9 * 60 + 25 && mins <= 9 * 60 + 40) return 15000; // 开盘十分钟高频盯
+    if (mins > 9 * 60 + 40 && mins <= 15 * 60) return 60000; // 盘中常规
+  }
+  return 5 * 60000; // 非交易时段低频
+}
+
+let powerTimer = null;
+
+async function loadPowerMonitor() {
+  const bar = document.getElementById("power-alert");
+  if (!bar) return;
+  try {
+    const data = await getJSON("/api/power/monitor");
+    const hits = data.hits || [];
+    if (!hits.length) {
+      bar.hidden = true;
+      bar.innerHTML = "";
+      return;
+    }
+    const live = hits.filter((h) => !h.broken);
+    const names = hits
+      .slice(0, 3)
+      .map((h) => `${h.name}${h.broken ? "(炸)" : ""} ${h.time}`)
+      .join(" · ");
+    bar.innerHTML =
+      `<span class="zap">⚡</span>` +
+      `<span class="alert-title">注意电力</span>` +
+      `<span class="alert-detail">${names}${hits.length > 3 ? ` 等${hits.length}只涨停` : ""}` +
+      `${data.trading && !live.length ? "（已炸板）" : ""}</span>`;
+    bar.hidden = false;
+    bar.title = `电力板块监控:${hits.length}只曾涨停,点击查看${hits[0].name}`;
+  } catch (e) {
+    /* 接口异常时保持现状,下次轮询重试 */
+  }
+}
+
+function schedulePowerMonitor() {
+  if (powerTimer) clearTimeout(powerTimer);
+  loadPowerMonitor().finally(() => {
+    powerTimer = setTimeout(schedulePowerMonitor, powerRefreshMs());
+  });
+}
+
 // ---- 波段战法 ----
 
 function bandToneClass(tone) {
@@ -1704,6 +1754,19 @@ else setNewsEnabled(false);
 tick();
 pollScreen(); // 页面加载时若已有选股在跑,自动接上进度
 loadBandMarket();
+schedulePowerMonitor();
+const powerBar = document.getElementById("power-alert");
+if (powerBar) {
+  powerBar.addEventListener("click", async () => {
+    try {
+      const data = await getJSON("/api/power/monitor");
+      const first = (data.hits || [])[0];
+      if (first) selectStock(first.code, first.name);
+    } catch (e) {
+      /* 忽略,下次点击重试 */
+    }
+  });
+}
 setInterval(tick, REFRESH_MS);
 setInterval(() => {
   if (newsEnabled) loadNews();
