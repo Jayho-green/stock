@@ -193,6 +193,38 @@ def test_korea_page_served(tmp_path):
     assert "韩芯双雄实时看盘" in r.text
 
 
+def test_amv0_page_served(tmp_path):
+    c = _client(tmp_path)
+    r = c.get("/amv0")
+    assert r.status_code == 200
+    assert "无穷成本均线" in r.text
+
+
+def test_amv0_api_requires_service(tmp_path):
+    c = _client(tmp_path)  # 未注入 amv0_service
+    assert c.get("/api/amv0").status_code == 503
+    assert c.get("/api/amv0/series?code=159825").status_code == 503
+
+
+def test_amv0_api_with_service(tmp_path):
+    from quant.web.amv0_service import Amv0Service
+
+    cfg = Config(watchlist=[{"code": "000001", "name": "平安银行"}], rules={"rsi_period": 14})
+    svc = DashboardService(FakeSource(), cfg)
+    log = tmp_path / "triggers.jsonl"
+    log.write_text("", encoding="utf-8")
+    amv0 = Amv0Service(cache_dir=tmp_path / "amv0_cache", instruments=[])
+    c = TestClient(create_app(svc, log_path=log, amv0_service=amv0))
+
+    r = c.get("/api/amv0")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["rows"] == []
+    assert "session_date" in body["status"]
+
+    assert c.get("/api/amv0/series?code=159825").status_code == 404
+
+
 def test_screen_history_endpoint(tmp_path):
     history = tmp_path / "screen_history.jsonl"
     history.write_text(

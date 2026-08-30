@@ -91,6 +91,51 @@ launchctl kickstart gui/$(id -u)/com.jayho.quant.lhb   # 立即手动触发一�
 tail -f data/lhb_archive.log                            # 看归档日志
 ```
 
+## 0AMV · 无穷成本均线(http://127.0.0.1:8000/amv0)
+
+指南针成本均线体系(CYC)面板。34 只板块主流 ETF 的 **K 线 × 0AMV 成本线**、板块 CYS0 汇总、
+全标的排序与市场宽度。
+
+**0AMV 是什么**:即指南针的**无穷成本均线 CYC∞**。"0" 是通达信公式里"自上市首日起/无穷"的
+周期写法,不是数字零。源码为 `DMA(AMOUNT/(100*VOL), VOL/CAPITAL)`,展开即
+
+```
+0AMV_t = 换手率_t × 当日均价_t + (1 − 换手率_t) × 0AMV_{t−1}
+```
+
+本质是**以每日换手率为衰减因子的持仓成本线**,等价于筹码分布的均值。记忆半衰期约
+`ln2/平均换手率` 个交易日(ETF 换手高,实际只有 4~27 天,面板"半衰期"列即此值)。
+派生指标 `CYS0 = (收盘价 − 0AMV) / 0AMV × 100`,即价格对全体持仓成本的乖离率:
+为正说明持仓者整体浮盈,为负说明整体套牢。
+
+- **数据源**:本机东方财富接口不可达(代理出口为境外 IP),统一走**新浪**(日线+成交额)
+  与**腾讯**(前复权价、流通份额)。
+- **必须复权**:ETF 存在份额折算(拆分),新浪不复权序列里会出现单日 −50% 的**假跌**。
+  用腾讯前复权价反解复权因子修正后才计算指标,否则指标会被彻底污染。
+- **缓存**:`data/amv0_cache/{代码}.json` + `_meta.json`。盘后数据稳定,缓存命中直接返回;
+  过期时后台线程异步刷新,页面先拿旧数据并显示"缓存待更新",不阻塞。
+- **接口**:`GET /api/amv0`(总览+板块+市场宽度)、`GET /api/amv0/series?code=159825&days=250`
+  (K 线+成本均线序列)、`POST /api/amv0/refresh`(手动触发后台刷新)。
+
+### 每日收盘自动更新(launchd)
+
+```bash
+# 手动刷新(--force 忽略缓存新鲜度)
+.venv/bin/python scripts/run_amv0_update.py
+.venv/bin/python scripts/run_amv0_update.py --force
+
+# 注册定时任务(每个工作日 15:35 自动刷新,全量 34 只约 15 秒)
+cp launchd/com.jayho.quant.amv0.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.jayho.quant.amv0.plist
+launchctl kickstart gui/$(id -u)/com.jayho.quant.amv0   # 立即手动触发一次
+tail -f data/amv0_update.log                             # 看刷新日志
+
+# 停用
+launchctl unload ~/Library/LaunchAgents/com.jayho.quant.amv0.plist
+```
+
+标的池在 `src/quant/amv0.py` 的 `UNIVERSE` 里维护,增删标的后重跑一次更新脚本即可。
+
 ## 每日自动选股(launchd)
 
 `run_screen.py` 从**科创板(688/689)+创业板(300/301)**约 2000 只里,并发拉近 150 天日线、套用 `SCREEN_RULES` 细筛,入选写入 `config/watchlist.generated.toml`。

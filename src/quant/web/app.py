@@ -21,6 +21,7 @@ DEFAULT_KLINE_CACHE = ROOT / "data" / "kline_cache"
 DEFAULT_GLOBAL_ARCHIVE = ROOT / "data" / "korea_close_archive.jsonl"
 DEFAULT_NEWS_CACHE = ROOT / "data" / "news_cache.json"
 DEFAULT_NEWS_EVENTS = ROOT / "data" / "news_events.sqlite3"
+DEFAULT_AMV0_CACHE = ROOT / "data" / "amv0_cache"
 
 
 def create_app(
@@ -29,13 +30,14 @@ def create_app(
     screen_runner=None,
     screen_history_path: Path | None = None,
     lhb_service=None,
+    amv0_service=None,
 ) -> FastAPI:
     app = FastAPI(title="A股盯盘面板")
 
     @app.middleware("http")
     async def no_cache(request, call_next):
         resp = await call_next(request)
-        if request.url.path in ("/", "/lhb", "/korea", "/news-window") or request.url.path.startswith("/static"):
+        if request.url.path in ("/", "/lhb", "/korea", "/news-window", "/amv0") or request.url.path.startswith("/static"):
             resp.headers["Cache-Control"] = "no-store"
         return resp
 
@@ -214,9 +216,34 @@ def create_app(
         except Exception as e:
             raise HTTPException(status_code=502, detail=f"龙虎榜趋势获取失败: {e}") from e
 
+    @app.get("/api/amv0")
+    def amv0_overview():
+        if amv0_service is None:
+            raise HTTPException(status_code=503, detail="未配置 0AMV 服务")
+        return amv0_service.get_overview()
+
+    @app.get("/api/amv0/series")
+    def amv0_series(code: str, days: int = 250):
+        if amv0_service is None:
+            raise HTTPException(status_code=503, detail="未配置 0AMV 服务")
+        try:
+            return amv0_service.get_series(code, days=days)
+        except KeyError as e:
+            raise HTTPException(status_code=404, detail=f"暂无 {code} 的缓存数据") from e
+
+    @app.post("/api/amv0/refresh")
+    def amv0_refresh():
+        if amv0_service is None:
+            raise HTTPException(status_code=503, detail="未配置 0AMV 服务")
+        return {"started": amv0_service.refresh_async(), "status": amv0_service.status()}
+
     @app.get("/")
     def index():
         return FileResponse(STATIC_DIR / "index.html")
+
+    @app.get("/amv0")
+    def amv0_page():
+        return FileResponse(STATIC_DIR / "amv0.html")
 
     @app.get("/lhb")
     def lhb_page():
@@ -271,7 +298,15 @@ def build_default_app() -> FastAPI:
             kline_cache_path=DEFAULT_KLINE_CACHE,
         )
     )
+    from .amv0_service import Amv0Service
     from .lhb_service import LhbService
 
     lhb = LhbService(source, cache_dir=ROOT / "data" / "lhb_cache")
-    return create_app(service, screen_runner=runner, screen_history_path=history, lhb_service=lhb)
+    amv0 = Amv0Service(cache_dir=DEFAULT_AMV0_CACHE)
+    return create_app(
+        service,
+        screen_runner=runner,
+        screen_history_path=history,
+        lhb_service=lhb,
+        amv0_service=amv0,
+    )

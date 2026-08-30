@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>0AMV 无穷成本均线面板</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23101719'/%3E%3Cpath d='M4 22 L11 14 L18 18 L28 8' stroke='%238264e6' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/static/amv0.css?v=3" />
+  <script src="/static/echarts.min.js?v=5.6.0"></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <p class="kicker">指南针成本均线体系 · CYC∞</p>
+        <h1>0AMV 无穷成本均线面板</h1>
+        <p class="formula">0AMV<sub>t</sub> = 换手率<sub>t</sub> × 当日均价<sub>t</sub> + (1 − 换手率<sub>t</sub>) × 0AMV<sub>t−1</sub></p>
+      </div>
+      <div class="top-actions">
+        <span id="status-pill" class="pill"><i></i>加载中</span>
+        <button id="refresh" class="btn">↻ 立即刷新</button>
+        <a href="/" class="nav-link">A股面板</a>
+        <a href="/lhb" class="nav-link">龙虎榜</a>
+        <a href="/korea" class="nav-link">韩芯</a>
+      </div>
+    </header>
+
+    <section class="tiles" id="tiles" aria-label="市场概览"></section>
+
+    <section class="split">
+      <div>
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>K 线 × 0AMV 成本线</h2>
+              <p id="chart-note">红涨绿跌为 A 股惯例；价在 0AMV 之上＝全体持仓者整体浮盈。</p>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <select id="picker" aria-label="选择标的"></select>
+              <select id="range" aria-label="显示区间">
+                <option value="120">近 120 日</option>
+                <option value="250" selected>近 250 日</option>
+                <option value="500">近 500 日</option>
+              </select>
+            </div>
+          </div>
+          <div class="legend">
+            <span><i class="box" style="background:var(--up)"></i>收阳</span>
+            <span><i class="box" style="background:var(--down)"></i>收阴</span>
+            <span><i style="background:var(--amv0);height:4px"></i>0AMV 无穷成本均线</span>
+            <span><i class="dash"></i>CYC13 中线成本均线</span>
+            <span><i class="tri"></i>超跌反转信号（早）</span>
+            <span><i class="ring"></i>三线多头排列（晚）</span>
+          </div>
+          <div id="chart"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>市场宽度：站上 0AMV 的 ETF 占比</h2>
+              <p>宽度高＝动量市（追溢价有效）；宽度低＝反转市（买折价有效）。50% 为分水岭。</p>
+            </div>
+          </div>
+          <div id="breadth-chart"></div>
+        </article>
+      </div>
+
+      <aside>
+        <article class="panel signal-panel" style="margin-top:0">
+          <div class="panel-head"><div><h2>超跌观察区</h2><p>CYS0 低于 −6% 的标的，由深到浅</p></div></div>
+          <table id="watch-table"><thead><tr><th>标的</th><th>CYS0%</th><th>状态</th><th>距上次信号</th></tr></thead><tbody></tbody></table>
+          <p class="caveat">入场条件＝<b>深度折价（CYS0 &lt; −8%）且乖离率当日回升</b>。实证触发点距 60 日低点仅 1.6%，
+            未来 20 日均收益 +5.5%、胜率 67%；而三线多头排列要等已涨 12.9% 才成立，收益反低于基准。
+            <b>注意</b>：按日聚类后其横截面超额并不显著，收益主要来自大盘 beta —— 它回答「何时加仓」，不回答「买哪个板块」。</p>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><div><h2>板块 CYS0 汇总</h2><p>板块内平均乖离率与站上成本线比例</p></div></div>
+          <table id="sector-table"><thead><tr><th>板块</th><th>只数</th><th>均CYS0</th><th>站上占比</th></tr></thead><tbody></tbody></table>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head"><div><h2>全标的排序</h2><p>点表头排序，点行切换 K 线</p></div></div>
+          <div style="max-height:560px;overflow:auto">
+            <table id="rank-table">
+              <thead><tr>
+                <th data-sort="name">标的</th><th data-sort="sector">板块</th>
+                <th data-sort="close">收盘</th><th data-sort="amv0">0AMV</th>
+                <th data-sort="cys0">CYS0%</th><th data-sort="half_life">半衰期</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </article>
+      </aside>
+    </section>
+  </main>
+
+  <script src="/static/amv0.js?v=2"></script>
+</body>
+</html>

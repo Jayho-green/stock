@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.jayho.quant.sectorflow</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/jayho/AI/stock/.venv/bin/python</string>
+    <string>/Users/jayho/AI/stock/scripts/run_sector_flow_snapshot.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/jayho/AI/stock</string>
+  <!-- 每个工作日 14:56(收盘前采集当日资金流,此时数据已基本定型) -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>14</integer><key>Minute</key><integer>56</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>14</integer><key>Minute</key><integer>56</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>14</integer><key>Minute</key><integer>56</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>14</integer><key>Minute</key><integer>56</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>14</integer><key>Minute</key><integer>56</integer></dict>
+  </array>
+  <key>StandardOutPath</key>
+  <string>/Users/jayho/AI/stock/data/sector_flow.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/jayho/AI/stock/data/sector_flow.log</string>
+</dict>
+</plist>
