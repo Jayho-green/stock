@@ -300,6 +300,44 @@ def test_add_watchlist_rejects_invalid_code(tmp_path):
     assert r.status_code == 400
 
 
+def test_search_endpoint(tmp_path):
+    c = _client(tmp_path, manual_path=tmp_path / "watchlist.manual.toml")
+    r = c.get("/api/search?q=银行")
+    assert r.status_code == 200
+    assert r.json()["results"] == [
+        {"code": "000001", "name": "平安银行"},
+        {"code": "600000", "name": "浦发银行"},
+    ]
+
+    r2 = c.get("/api/search?q=6000")
+    assert r2.status_code == 200
+    assert r2.json()["results"] == [{"code": "600000", "name": "浦发银行"}]
+
+    r3 = c.get("/api/search?q=")
+    assert r3.status_code == 200
+    assert r3.json()["results"] == []
+
+
+def test_band_market_and_stock_endpoints(tmp_path):
+    c = _client(tmp_path, manual_path=tmp_path / "watchlist.manual.toml")
+    r = c.get("/api/band/market")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["temperature"] is None  # FakeSource 无涨跌家数接口,优雅降级
+    assert body["index"] is None
+
+    r2 = c.get("/api/band/stock?code=000001")
+    assert r2.status_code == 200
+    data = r2.json()
+    assert data["code"] == "000001"
+    assert data["name"] == "平安银行"
+    assert isinstance(data["checks"], list) and len(data["checks"]) == 5
+    assert data["verdict"]["title"]
+
+    r3 = c.get("/api/band/stock?code=abc")
+    assert r3.status_code == 400
+
+
 class FakeRunner:
     def __init__(self):
         self._running = False
@@ -418,3 +456,25 @@ def test_screen_run_without_runner_returns_error(tmp_path):
     c = _client(tmp_path)  # 未配置 runner
     r = c.post("/api/screen/run")
     assert r.json()["started"] is False
+
+
+def test_app_boots_with_src_on_syspath():
+    """回归防护:src/ 置于 sys.path 首位时(run_web.py 的做法)应用必须能导入。
+
+    stock-main 曾引入 src/tomllib.py(3.10 垫片,转发 tomli),它会遮蔽标准库
+    tomllib,导致 pytest 能过但 `scripts/run_web.py` 启动即崩。此用例复现真实启动路径。
+    """
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    code = (
+        "import sys;"
+        f"sys.path.insert(0, {str(root / 'src')!r});"
+        "import quant.config, quant.web.app;"
+        "print('ok')"
+    )
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=root)
+    assert r.returncode == 0, f"以 run_web.py 的路径顺序导入失败:\n{r.stderr[-800:]}"
+    assert "ok" in r.stdout

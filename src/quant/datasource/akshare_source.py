@@ -154,8 +154,11 @@ def _normalize_bars(raw: pd.DataFrame) -> pd.DataFrame:
 
 
 def _normalize_tx_daily(raw: pd.DataFrame) -> pd.DataFrame:
-    """腾讯日线接口的 amount 字段实际是成交量。"""
-    df = raw.rename(columns={"amount": "volume"})
+    """腾讯日线归一化。旧版接口 amount 列才是成交量;新版已带 volume 列,rename 会产生重复列名。"""
+    if "volume" in raw.columns:
+        df = raw.drop(columns=["amount"], errors="ignore")
+    else:
+        df = raw.rename(columns={"amount": "volume"})
     return _normalize_bars(df)
 
 
@@ -223,6 +226,87 @@ class AkshareSource(DataSource):
                 )
                 return _normalize_tx_daily(raw)
         return _normalize_bars(raw)
+
+    def get_market_activity(self) -> dict:
+        """乐咕赚钱效应:全市场涨跌家数分布,用于计算波段战法市场温度。"""
+        with _AKSHARE_LOCK:
+            import akshare as ak
+
+            raw = _with_retry(
+                ak.stock_market_activity_legu,
+                tries=self.tries,
+                base=self.retry_base,
+            )
+        m = {str(k): v for k, v in zip(raw["item"], raw["value"])}
+
+        def _num(key: str) -> int:
+            try:
+                return int(float(m.get(key) or 0))
+            except (TypeError, ValueError):
+                return 0
+
+        return {
+            "up": _num("上涨"),
+            "down": _num("下跌"),
+            "flat": _num("平盘"),
+            "limit_up": _num("涨停"),
+            "limit_down": _num("跌停"),
+            "stat_time": str(m.get("统计日期") or ""),
+        }
+
+    def get_index_daily(self, symbol: str = "sh000001", start: str = "", end: str = "") -> pd.DataFrame:
+        """指数日线(腾讯接口,sh000001=上证)。"""
+        with _AKSHARE_LOCK:
+            import akshare as ak
+
+            raw = _with_retry(
+                lambda: ak.stock_zh_a_hist_tx(
+                    symbol=symbol,
+                    start_date=start,
+                    end_date=end,
+                    adjust="",
+                    timeout=self.timeout,
+                ),
+                tries=self.tries,
+                base=self.retry_base,
+            )
+        # _normalize_tx_daily 已兼容新版自带 volume 列的结构
+        return _normalize_tx_daily(raw)
+
+    def get_realtime_board(self, codes: list[str] | None = None) -> pd.DataFrame:
+        """全A实时快照(含涨跌幅),按 codes 过滤;codes 为空返回全部。"""
+        with _AKSHARE_LOCK:
+            import akshare as ak
+
+            try:
+                raw = _with_retry(ak.stock_zh_a_spot_em, tries=self.tries, base=self.retry_base)
+            except Exception:
+                raw = _with_retry(ak.stock_zh_a_spot, tries=1, base=self.retry_base)
+        df = raw.rename(columns={"代码": "code", "名称": "name", "最新价": "price", "涨跌幅": "pct"})
+        df = df[["code", "name", "price", "pct"]].copy()
+        df["code"] = df["code"].astype(str).str.replace(r"^(sh|sz|bj)", "", regex=True).str.zfill(6)
+        if codes is not None:
+            df = df[df["code"].isin([str(c).zfill(6) for c in codes])]
+        return df.reset_index(drop=True)
+
+    def get_industry_board_cons(self, board: str = "电力行业") -> pd.DataFrame:
+        """东财行业板块成分股,含成交额/换手率,用于板块活跃股筛选。"""
+        with _AKSHARE_LOCK:
+            import akshare as ak
+
+            raw = _with_retry(
+                lambda: ak.stock_board_industry_cons_em(symbol=board, timeout=self.timeout),
+                tries=self.tries,
+                base=self.retry_base,
+            )
+        df = raw.rename(
+            columns={"代码": "code", "名称": "name", "最新价": "price", "涨跌幅": "pct", "成交额": "amount", "换手率": "turnover"}
+        )
+        cols = ["code", "name", "price", "pct", "amount", "turnover"]
+        for c in ("price", "pct", "amount", "turnover"):
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c], errors="coerce")
+        return df[[c for c in cols if c in df.columns]].copy()
 
     def get_realtime(self, codes: list[str]) -> pd.DataFrame:
         with _AKSHARE_LOCK:

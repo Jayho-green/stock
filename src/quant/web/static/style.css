@@ -287,7 +287,7 @@ main {
   top: 78px;
   z-index: 19;
   display: grid;
-  grid-template-columns: minmax(150px, 190px) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(150px, 190px) auto minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   min-height: 44px;
@@ -298,6 +298,70 @@ main {
     rgba(7, 10, 11, 0.94);
   backdrop-filter: blur(12px);
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.22);
+}
+
+.power-alert[hidden] {
+  display: none;
+}
+
+/* ---- 电力板块涨停提示条(顶部行情条内) ---- */
+
+.power-alert {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border: 1px solid #ff9a3c;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #d21f2e 0%, #a51220 60%, #d21f2e 100%);
+  background-size: 200% 100%;
+  color: #ffe9b8;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  animation: powerAlertPulse 1.6s ease-in-out infinite;
+}
+
+.power-alert:hover {
+  border-color: #ffc86e;
+}
+
+.power-alert .zap {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.power-alert .alert-title {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  text-shadow: 0 0 6px rgba(255, 200, 80, 0.65);
+}
+
+.power-alert .alert-detail {
+  color: #ffd9a0;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+@keyframes powerAlertPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(210, 31, 46, 0.55);
+    filter: brightness(1);
+  }
+  50% {
+    box-shadow: 0 0 14px 2px rgba(255, 120, 60, 0.75);
+    filter: brightness(1.18);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .power-alert {
+    animation: none;
+  }
 }
 
 .global-quote-label {
@@ -694,10 +758,39 @@ main.left-collapsed.news-collapsed {
 
 .watch-add {
   display: grid;
-  grid-template-columns: minmax(96px, 1fr) minmax(108px, 1fr) auto;
+  grid-template-columns: minmax(96px, 1fr) auto;
   gap: 8px;
   align-items: center;
   padding: 12px 14px 9px 16px;
+}
+
+.watch-search {
+  position: relative;
+}
+
+.watch-search-menu {
+  width: 220px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.watch-search-menu .dd-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.watch-search-menu .dd-item .code {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.watch-search-menu .dd-item .added {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .watch-add input {
@@ -1513,6 +1606,257 @@ tbody tr.has-signal { box-shadow: inset 2px 0 0 var(--brass); }
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- 波段战法 ---- */
+
+.band-console {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.band-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.band-head h2 {
+  margin-top: 3px;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.1;
+}
+
+.band-time {
+  color: var(--faint);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.band-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.band-card {
+  min-width: 0;
+  padding: 14px 16px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+}
+
+.band-card h3 {
+  margin: 0 0 10px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.band-card h3 small {
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.band-card h3 + h3 {
+  margin-top: 12px;
+}
+
+.band-temp-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.band-temp-value {
+  color: var(--brass);
+  font-family: var(--mono);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.band-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+
+.band-badge.tone-good {
+  background: rgba(48, 200, 137, 0.14);
+  color: var(--green);
+}
+
+.band-badge.tone-ok {
+  background: rgba(85, 214, 210, 0.12);
+  color: var(--cyan);
+}
+
+.band-badge.tone-bad {
+  background: rgba(240, 91, 104, 0.14);
+  color: var(--red);
+}
+
+.band-badge.tone-warn {
+  background: rgba(210, 165, 82, 0.16);
+  color: var(--brass);
+}
+
+.band-detail {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.band-detail + .band-detail {
+  margin-top: 4px;
+}
+
+.band-detail b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.band-action {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--brass);
+  background: var(--surface-soft);
+  border-radius: 0 6px 6px 0;
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+.band-verdict {
+  margin-bottom: 10px;
+}
+
+.band-verdict .band-badge {
+  font-size: 13px;
+}
+
+.band-verdict p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.band-checks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.band-checks li {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 7px 10px;
+  background: var(--surface-soft);
+  border-radius: 6px;
+  font-size: 12.5px;
+}
+
+.band-checks .mark {
+  font-family: var(--mono);
+  font-weight: 700;
+}
+
+.band-checks li.ok .mark {
+  color: var(--green);
+}
+
+.band-checks li.ng .mark {
+  color: var(--red);
+}
+
+.band-checks li.na .mark {
+  color: var(--faint);
+}
+
+.band-checks .label {
+  color: var(--muted);
+  min-width: 0;
+}
+
+.band-checks .label small {
+  display: block;
+  color: var(--faint);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.band-checks li.ok .label {
+  color: var(--text);
+}
+
+.band-checks .val {
+  color: var(--text);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.band-rule-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.band-rule-list li {
+  padding: 7px 10px;
+  background: var(--surface-soft);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.band-rule-list b {
+  color: var(--brass);
+}
+
+#band-temp-pill {
+  cursor: pointer;
+}
+
+#band-temp-pill.hot {
+  color: var(--green);
+  border-color: rgba(48, 200, 137, 0.4);
+}
+
+#band-temp-pill.cold {
+  color: var(--red);
+  border-color: rgba(240, 91, 104, 0.4);
+}
+
+@media (max-width: 1180px) {
+  .band-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 #backtest-trades th,
 #backtest-trades td {
   padding: 9px 10px;
@@ -1640,6 +1984,11 @@ button:active {
 
 .top-status {
   gap: 7px;
+  /* 顶栏右区条目已达 9 个(韩芯/龙虎榜/0AMV/自选/温度/信号/资讯/更新时间…),
+     窄屏下内容宽度会超出 grid 第三列。默认 flex 不换行时会向左溢出并压住
+     中间的选股命令区,因此允许换行降级,而不是裁掉信息。 */
+  flex-wrap: wrap;
+  row-gap: 6px;
 }
 
 .metric-pill,
@@ -2076,9 +2425,14 @@ tbody tr.active {
   .global-quote-label {
     grid-column: 1;
   }
-  .global-quote-items {
+  .power-alert {
     grid-column: 1 / -1;
     grid-row: 2;
+    justify-content: center;
+  }
+  .global-quote-items {
+    grid-column: 1 / -1;
+    grid-row: 3;
     overflow-x: auto;
     padding-bottom: 1px;
   }

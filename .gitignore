@@ -17,6 +17,7 @@ tmp/
 config/config.toml
 config/watchlist.manual.toml
 config/watchlist.generated.toml
+config/power_watch.toml
 .env
 .env.*
 !.env.example

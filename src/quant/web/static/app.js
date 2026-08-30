@@ -926,6 +926,138 @@ async function selectStock(code, name) {
     tr.classList.toggle("active", tr.dataset.code === code)
   );
   loadChart();
+  loadBandStock(code, name);
+}
+
+// ---- 电力板块涨停监控 ----
+
+function powerRefreshMs() {
+  const now = new Date();
+  const day = now.getDay();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  if (day >= 1 && day <= 5) {
+    if (mins >= 9 * 60 + 25 && mins <= 9 * 60 + 40) return 15000; // 开盘十分钟高频盯
+    if (mins > 9 * 60 + 40 && mins <= 15 * 60) return 60000; // 盘中常规
+  }
+  return 5 * 60000; // 非交易时段低频
+}
+
+let powerTimer = null;
+
+async function loadPowerMonitor() {
+  const bar = document.getElementById("power-alert");
+  if (!bar) return;
+  try {
+    const data = await getJSON("/api/power/monitor");
+    const hits = data.hits || [];
+    if (!hits.length) {
+      bar.hidden = true;
+      bar.innerHTML = "";
+      return;
+    }
+    const live = hits.filter((h) => !h.broken);
+    const names = hits
+      .slice(0, 3)
+      .map((h) => `${h.name}${h.broken ? "(炸)" : ""} ${h.time}`)
+      .join(" · ");
+    bar.innerHTML =
+      `<span class="zap">⚡</span>` +
+      `<span class="alert-title">注意电力</span>` +
+      `<span class="alert-detail">${names}${hits.length > 3 ? ` 等${hits.length}只涨停` : ""}` +
+      `${data.trading && !live.length ? "（已炸板）" : ""}</span>`;
+    bar.hidden = false;
+    bar.title = `电力板块监控:${hits.length}只曾涨停,点击查看${hits[0].name}`;
+  } catch (e) {
+    /* 接口异常时保持现状,下次轮询重试 */
+  }
+}
+
+function schedulePowerMonitor() {
+  if (powerTimer) clearTimeout(powerTimer);
+  loadPowerMonitor().finally(() => {
+    powerTimer = setTimeout(schedulePowerMonitor, powerRefreshMs());
+  });
+}
+
+// ---- 波段战法 ----
+
+function bandToneClass(tone) {
+  return tone === "good" || tone === "ok" || tone === "bad" || tone === "warn" ? `tone-${tone}` : "";
+}
+
+async function loadBandMarket() {
+  const pill = document.getElementById("band-temp-pill");
+  const valueEl = document.getElementById("band-temp-value");
+  const levelEl = document.getElementById("band-temp-level");
+  try {
+    const data = await getJSON("/api/band/market");
+    const t = data.temperature;
+    if (t) {
+      valueEl.textContent = `${t.value}%`;
+      levelEl.textContent = t.level;
+      levelEl.className = `band-badge ${bandToneClass(t.tone)}`;
+      document.getElementById("band-temp-detail").innerHTML =
+        `上涨 <b>${t.up}</b> 家 · 下跌 <b>${t.down}</b> 家 · 平盘 <b>${t.flat}</b> 家` +
+        ` · 涨停 <b>${t.limit_up}</b> · 跌停 <b>${t.limit_down}</b>`;
+      document.getElementById("band-temp-action").textContent = `参考：${t.action}`;
+      if (pill) {
+        pill.textContent = `温度 ${t.value}% ${t.level}`;
+        pill.classList.toggle("hot", t.tone === "good");
+        pill.classList.toggle("cold", t.tone === "bad");
+        pill.title = `${t.level}：${t.action}`;
+      }
+      if (t.stat_time) document.getElementById("band-market-time").textContent = `数据 ${t.stat_time}`;
+    } else {
+      valueEl.textContent = "—";
+      levelEl.textContent = "无数据";
+      document.getElementById("band-temp-detail").textContent = "涨跌家数暂不可用";
+      if (pill) pill.textContent = "温度 —";
+    }
+    const idx = data.index;
+    if (idx && idx.close) {
+      document.getElementById("band-index-detail").innerHTML =
+        `大盘 上证 <b>${idx.close}</b> · <b>${idx.position}</b>(60日区间 ${idx.pos_pct}%) · ` +
+        `连续 <b>${idx.no_new_low_streak}</b> 日未创新低${idx.made_new_low ? "（今日创新低）" : ""} —— ${idx.note}`;
+    } else {
+      document.getElementById("band-index-detail").textContent = "大盘体检暂不可用";
+    }
+  } catch (e) {
+    if (pill) pill.textContent = "温度 —";
+  }
+}
+
+async function loadBandStock(code, name) {
+  const titleEl = document.getElementById("band-stock-title");
+  const verdictEl = document.getElementById("band-stock-verdict");
+  const listEl = document.getElementById("band-stock-checks");
+  if (!verdictEl || !listEl) return;
+  titleEl.textContent = "加载中…";
+  verdictEl.innerHTML = "";
+  listEl.innerHTML = "";
+  try {
+    const r = await getJSON(`/api/band/stock?code=${encodeURIComponent(code)}&name=${encodeURIComponent(name || "")}`);
+    if (r.code !== String(code).padStart(6, "0")) return;
+    titleEl.textContent = `${r.name}(${r.code}) ¥${r.price}`;
+    const v = r.verdict || {};
+    verdictEl.innerHTML =
+      `<span class="band-badge ${bandToneClass(v.tone)}">${v.title || "—"}</span>` +
+      (v.note ? `<p>${v.note}</p>` : "");
+    listEl.innerHTML = (r.checks || [])
+      .map((c) => {
+        const cls = c.ok === null || c.ok === undefined ? "na" : c.ok ? "ok" : "ng";
+        const mark = cls === "na" ? "·" : cls === "ok" ? "✓" : "✗";
+        const sub = [c.detail, c.note].filter(Boolean).join(" · ");
+        return (
+          `<li class="${cls}"><span class="mark">${mark}</span>` +
+          `<span class="label">${c.label}${sub ? `<small>${sub}</small>` : ""}</span>` +
+          `<span class="val">${c.value}</span></li>`
+        );
+      })
+      .join("");
+  } catch (e) {
+    titleEl.textContent = "体检失败";
+    verdictEl.innerHTML = `<span class="band-badge tone-bad">加载失败</span><p>${e.message}</p>`;
+  }
 }
 
 async function loadChart(options = {}) {
@@ -1198,24 +1330,45 @@ document.addEventListener("click", () => {
   scopeMenu.hidden = true;
 });
 
+let screening = false;
+
 function setScreening(on) {
-  screenBtn.disabled = on;
-  screenBtn.textContent = on ? "选股中…" : "立即选股";
+  screening = on;
+  screenBtn.disabled = false;
+  screenBtn.textContent = on ? "停止选股" : "立即选股";
 }
 
 function progressText(progress) {
   if (!progress || !progress.total) return "选股中…";
-  const failed = progress.failed ? `,失败 ${progress.failed}` : "";
-  return `选股中:${progress.done}/${progress.total}${failed}`;
+  const doneText = `${progress.done}/${progress.total}`;
+  if (progress.cooling_down) {
+    return `限流冷却中(第${progress.cooldowns}次),${progress.retry_delay_seconds || 60}秒后自动继续,已完成 ${doneText}`;
+  }
+  if (progress.retrying) {
+    const err = progress.retry_error ? `(${progress.retry_error})` : "";
+    return `限流中断${err},等待重试(第${progress.retry_attempt}/${progress.max_retries}次),已完成 ${doneText},续跑不重选`;
+  }
+  const failed = progress.failed ? `,本轮失败 ${progress.failed}` : "";
+  const resumed = progress.resumed_done ? `(续跑${progress.resumed_done})` : "";
+  return `选股中:${doneText}${failed}${resumed}`;
 }
 
 function finishText(last) {
-  if (!last.ok) return "选股失败:" + last.error;
+  if (!last.ok) {
+    if (last.cancelled) return `已停止:${last.error || ""}(可重新点击继续跑完)`;
+    return "选股失败:" + last.error;
+  }
+  if (last.cancelled) {
+    return `已手动停止:已处理 ${last.done || 0}/${last.total || 0},入选 ${last.count || 0} 只(结果已保留,再点可续跑)`;
+  }
+  if (last.retries_exhausted) {
+    return `选股未完成:已达最大重试次数,已处理 ${last.done}/${last.total},入选 ${last.count || 0} 只(结果已保留)`;
+  }
   if (last.aborted) {
-    return `选股停止:${last.abort_reason || "数据源失败过多"}`;
+    return `选股停止:${last.abort_reason || "数据源失败过多"}(已处理 ${last.done || 0}/${last.total || 0},结果已保留)`;
   }
   if (last.timed_out) {
-    return `选股超时:已处理 ${last.done}/${last.total},入选 ${last.count} 只`;
+    return `选股超时:已处理 ${last.done}/${last.total},入选 ${last.count} 只(结果已保留)`;
   }
   return `选股完成:入选 ${last.count} 只(用时 ${last.elapsed}s)`;
 }
@@ -1246,6 +1399,16 @@ async function pollScreen() {
 }
 
 screenBtn.addEventListener("click", async () => {
+  if (screening) {
+    // 运行中:点击即请求停止(进度与已入选结果保留)
+    screenMsg.textContent = "正在停止选股…";
+    try {
+      await fetch("/api/screen/cancel", { method: "POST" });
+    } catch (e) {
+      screenMsg.textContent = "停止请求失败:" + e.message;
+    }
+    return;
+  }
   const strategy = currentStrategy() || "zhixing";
   const scope = currentScope() || "star_chinext";
   setScreening(true);
@@ -1293,8 +1456,8 @@ document.querySelectorAll(".aux-tab").forEach((btn) => {
   });
 });
 
-const watchCode = document.getElementById("watch-code");
-const watchName = document.getElementById("watch-name");
+const watchSearch = document.getElementById("watch-search");
+const watchSearchMenu = document.getElementById("watch-search-menu");
 const watchAddBtn = document.getElementById("watch-add-btn");
 const watchAddMsg = document.getElementById("watch-add-msg");
 const backtestCode = document.getElementById("backtest-code");
@@ -1396,13 +1559,69 @@ backtestBtn.addEventListener("click", async () => {
   }
 });
 
-watchAddBtn.addEventListener("click", async () => {
-  const code = watchCode.value.trim();
-  const name = watchName.value.trim();
-  if (!code) {
-    watchAddMsg.textContent = "请输入股票代码";
+// ---- 自选搜索(名称/代码联想) ----
+let watchSearchTimer = null;
+let watchSearchResults = [];
+let watchSearchIndex = -1;
+
+const watchCodeSet = () => new Set(quoteRows.map((row) => row.code));
+
+function hideWatchSearchMenu() {
+  watchSearchMenu.hidden = true;
+  watchSearchIndex = -1;
+}
+
+function renderWatchSearchMenu(rows) {
+  watchSearchResults = rows || [];
+  watchSearchIndex = -1;
+  if (!watchSearchResults.length) {
+    hideWatchSearchMenu();
     return;
   }
+  const added = watchCodeSet();
+  watchSearchMenu.innerHTML = "";
+  for (const item of watchSearchResults) {
+    const li = document.createElement("li");
+    li.className = "dd-item";
+    li.dataset.code = item.code;
+    li.dataset.name = item.name;
+    li.innerHTML =
+      `<span>${item.name}</span>` +
+      (added.has(item.code)
+        ? `<span class="added">已自选</span>`
+        : `<span class="code">${item.code}</span>`);
+    li.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      addWatchStock(item.code, item.name);
+    });
+    watchSearchMenu.appendChild(li);
+  }
+  watchSearchMenu.hidden = false;
+}
+
+function highlightWatchSearchItem() {
+  const items = watchSearchMenu.querySelectorAll(".dd-item");
+  items.forEach((el, i) => el.classList.toggle("selected", i === watchSearchIndex));
+  if (watchSearchIndex >= 0 && items[watchSearchIndex]) {
+    items[watchSearchIndex].scrollIntoView({ block: "nearest" });
+  }
+}
+
+async function searchWatchStocks() {
+  const q = watchSearch.value.trim();
+  if (!q) {
+    hideWatchSearchMenu();
+    return;
+  }
+  try {
+    const data = await getJSON(`/api/search?q=${encodeURIComponent(q)}&limit=10`);
+    if (watchSearch.value.trim() === q) renderWatchSearchMenu(data.results || []);
+  } catch (e) {
+    /* 搜索失败静默 */
+  }
+}
+
+async function addWatchStock(code, name) {
   watchAddBtn.disabled = true;
   watchAddMsg.textContent = "加入中…";
   try {
@@ -1411,9 +1630,9 @@ watchAddBtn.addEventListener("click", async () => {
     const r = await fetch("/api/watchlist/add?" + qs.toString(), { method: "POST" });
     const data = await r.json();
     if (!r.ok || !data.ok) throw new Error(data.detail || "加入失败");
-    watchCode.value = "";
-    watchName.value = "";
-    watchAddMsg.textContent = data.added ? "已加入自选股" : "自选股已存在";
+    watchSearch.value = "";
+    hideWatchSearchMenu();
+    watchAddMsg.textContent = data.added ? `已加入 ${data.item.name}` : `${data.item.name} 已在自选`;
     upsertQuotePlaceholder(data.item, data.added ? "已加入，行情刷新中" : "已存在，行情刷新中");
     selectStock(data.item.code, data.item.name);
     tick();
@@ -1421,13 +1640,66 @@ watchAddBtn.addEventListener("click", async () => {
     watchAddMsg.textContent = e.message;
   } finally {
     watchAddBtn.disabled = false;
+    watchSearch.focus();
+  }
+}
+
+watchSearch.addEventListener("input", () => {
+  watchAddMsg.textContent = "";
+  clearTimeout(watchSearchTimer);
+  watchSearchTimer = setTimeout(searchWatchStocks, 250);
+});
+
+watchSearch.addEventListener("focus", () => {
+  if (watchSearch.value.trim() && !watchSearchMenu.hidden) return;
+  if (watchSearch.value.trim()) searchWatchStocks();
+});
+
+watchSearch.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown" && !watchSearchMenu.hidden) {
+    e.preventDefault();
+    watchSearchIndex = Math.min(watchSearchIndex + 1, watchSearchResults.length - 1);
+    highlightWatchSearchItem();
+  } else if (e.key === "ArrowUp" && !watchSearchMenu.hidden) {
+    e.preventDefault();
+    watchSearchIndex = Math.max(watchSearchIndex - 1, 0);
+    highlightWatchSearchItem();
+  } else if (e.key === "Escape") {
+    hideWatchSearchMenu();
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    if (watchSearchIndex >= 0 && watchSearchResults[watchSearchIndex]) {
+      const item = watchSearchResults[watchSearchIndex];
+      addWatchStock(item.code, item.name);
+    } else if (/^\d{6}$/.test(watchSearch.value.trim())) {
+      addWatchStock(watchSearch.value.trim(), null);
+    } else if (watchSearchResults.length) {
+      const item = watchSearchResults[0];
+      addWatchStock(item.code, item.name);
+    } else {
+      watchAddMsg.textContent = "请输入名称或6位代码";
+    }
   }
 });
 
-[watchCode, watchName].forEach((el) => {
-  el.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") watchAddBtn.click();
-  });
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".watch-search")) hideWatchSearchMenu();
+});
+
+watchAddBtn.addEventListener("click", () => {
+  const q = watchSearch.value.trim();
+  if (!q) {
+    watchAddMsg.textContent = "请输入名称或代码";
+    return;
+  }
+  if (/^\d{6}$/.test(q)) {
+    addWatchStock(q, null);
+  } else if (watchSearchResults.length) {
+    const item = watchSearchResults[0];
+    addWatchStock(item.code, item.name);
+  } else {
+    watchAddMsg.textContent = "未找到匹配的股票";
+  }
 });
 
 [backtestCode].forEach((el) => {
@@ -1481,7 +1753,28 @@ if (newsEnabled) loadNews();
 else setNewsEnabled(false);
 tick();
 pollScreen(); // 页面加载时若已有选股在跑,自动接上进度
+loadBandMarket();
+schedulePowerMonitor();
+const powerBar = document.getElementById("power-alert");
+if (powerBar) {
+  powerBar.addEventListener("click", async () => {
+    try {
+      const data = await getJSON("/api/power/monitor");
+      const first = (data.hits || [])[0];
+      if (first) selectStock(first.code, first.name);
+    } catch (e) {
+      /* 忽略,下次点击重试 */
+    }
+  });
+}
 setInterval(tick, REFRESH_MS);
 setInterval(() => {
   if (newsEnabled) loadNews();
 }, NEWS_REFRESH_MS);
+setInterval(loadBandMarket, 5 * 60 * 1000);
+const bandPill = document.getElementById("band-temp-pill");
+if (bandPill) {
+  bandPill.addEventListener("click", () => {
+    document.querySelector(".band-console")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  });
+}

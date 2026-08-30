@@ -134,11 +134,17 @@ def screen_concurrent(
     progress: Callable[[dict], None] | None = None,
     on_result: Callable[[dict, str, dict | None], None] | None = None,
     kline_cache: PostCloseKlineCache | None = None,
+    cooldown_seconds: float = 60.0,
+    max_cooldowns: int = 60,
+    stop_check: Callable[[], bool] | None = None,
 ) -> list[dict]:
-    """并发对 universe 逐只拉日线套用规则,按量比降序取前 top_n,返回 [{code,name}]。
+    """并发对 universe 逐只拉日线套用规则,按量比降序取前 top_n,返回 [{code,name,score}]。
 
     top_n=None 表示不限数量。
-    timeout_seconds 设置整批选股最长等待时间;超时后返回已完成任务里的入选结果。
+    timeout_seconds 设置整批选股最长等待时间(限流冷却时间不计入);超时后返回已完成任务里的入选结果。
+    限流导致 should_abort 触发时,不直接退出,而是等待 cooldown_seconds 后重置失败计数继续;
+    连续冷却 max_cooldowns 次后才真正 abort。
+    stop_check 返回 True 时尽快停止并返回已完成的结果。
     """
 
     stats = {
@@ -151,6 +157,10 @@ def screen_concurrent(
         "timed_out": False,
         "aborted": False,
         "abort_reason": None,
+        "cooldowns": 0,
+        "cooling_down": False,
+        "cooldown_reason": None,
+        "stopped": False,
     }
     max_initial_failures = cfg.get("max_initial_failures", 30)
     min_failure_check = cfg.get("min_failure_check", 50)
@@ -187,6 +197,7 @@ def screen_concurrent(
     executor = ThreadPoolExecutor(max_workers=workers)
     items = iter(universe)
     pending: set[Future] = set()
+    need_cooldown: str | None = None
 
     def submit_next() -> bool:
         try:
@@ -203,6 +214,9 @@ def screen_concurrent(
     emit()
     try:
         while pending:
+            if stop_check is not None and stop_check():
+                stats["stopped"] = True
+                break
             wait_timeout = 1.0
             if deadline is not None:
                 remaining = deadline - time.monotonic()
@@ -229,30 +243,65 @@ def screen_concurrent(
                     passers.append(item)
                 if on_result is not None:
                     on_result(original, status, item)
+                if stop_check is not None and stop_check():
+                    stats["stopped"] = True
+                    break
                 reason = should_abort()
                 if reason:
-                    stats["aborted"] = True
-                    stats["abort_reason"] = reason
-                    break
+                    need_cooldown = reason
+                    continue
                 submit_next()
             emit()
+            if stats["stopped"]:
+                break
+            if need_cooldown:
+                if stats["cooldowns"] >= max_cooldowns:
+                    stats["aborted"] = True
+                    stats["abort_reason"] = need_cooldown
+                    break
+                stats["cooldowns"] += 1
+                stats["cooling_down"] = True
+                stats["cooldown_reason"] = need_cooldown
+                emit()
+                # 冷却分片等待,可被 stop 打断;冷却时间不计入超时预算
+                slept = 0.0
+                while slept < cooldown_seconds:
+                    if stop_check is not None and stop_check():
+                        stats["stopped"] = True
+                        break
+                    step = min(0.5, cooldown_seconds - slept)
+                    time.sleep(step)
+                    slept += step
+                stats["cooling_down"] = False
+                stats["cooldown_reason"] = None
+                if deadline is not None:
+                    deadline += cooldown_seconds
+                if stats["stopped"]:
+                    break
+                stats["failed"] = 0
+                need_cooldown = None
+                while len(pending) < workers:
+                    if not submit_next():
+                        break
             if stats["aborted"]:
                 break
     finally:
         if pending:
             stats["cancelled"] = sum(1 for fut in pending if fut.cancel())
-            if not stats["aborted"]:
+            if not stats["aborted"] and not stats["stopped"]:
                 stats["timed_out"] = True
         executor.shutdown(
-            wait=not (stats["timed_out"] or stats["aborted"]),
-            cancel_futures=stats["timed_out"] or stats["aborted"],
+            wait=not (stats["timed_out"] or stats["aborted"] or stats["stopped"]),
+            cancel_futures=stats["timed_out"] or stats["aborted"] or stats["stopped"],
         )
         emit()
 
     passers.sort(key=lambda x: x["score"], reverse=True)
     if top_n is not None:
         passers = passers[:top_n]
-    return [{"code": p["code"], "name": p["name"]} for p in passers]
+    return [
+        {"code": p["code"], "name": p["name"], "score": p["score"]} for p in passers
+    ]
 
 
 def write_generated(selected: list[dict], path: str | Path) -> None:
@@ -277,6 +326,7 @@ def run_full_screen(
     history_path: str | Path | None = None,
     kline_cache_path: str | Path | None = None,
     clock: Callable[[], datetime] = datetime.now,
+    stop_check: Callable[[], bool] | None = None,
 ) -> dict:
     """完整选股流程(定时任务与面板按钮共用):
 
@@ -290,6 +340,8 @@ def run_full_screen(
     days = screen_cfg.get("lookback_days", 250)
     top_n = screen_cfg.get("top_n", 20)
     timeout_seconds = screen_cfg.get("timeout_seconds", 900)
+    cooldown_seconds = screen_cfg.get("cooldown_seconds", 60.0)
+    max_cooldowns = screen_cfg.get("max_cooldowns", 60)
     latest_progress: dict = {}
     kline_cache = PostCloseKlineCache(kline_cache_path, clock=clock) if kline_cache_path is not None else None
 
@@ -324,7 +376,10 @@ def run_full_screen(
 
     processed = checkpoint.get("processed", {})
     previous_selected = checkpoint.get("selected", [])
-    remaining = [item for item in universe if item["code"] not in processed]
+    # 只跳过已成功判定(passed/missed)的股票;failed 的重新尝试(可能是限流)
+    skip_statuses = {"passed", "missed"}
+    remaining = [item for item in universe if processed.get(item["code"]) not in skip_statuses]
+    # 进度按 checkpoint 已处理总数计(含 failed),重试轮不回退
     resumed_done = len(processed)
     resumed_selected = len(previous_selected)
 
@@ -342,10 +397,10 @@ def run_full_screen(
         merged = {
             **stats,
             "total": len(universe),
-            "done": resumed_done + stats.get("done", 0),
+            "done": len(processed),
             "resumed_done": resumed_done,
             "resumed_selected": resumed_selected,
-            "remaining": max(0, len(universe) - resumed_done - stats.get("done", 0)),
+            "remaining": max(0, len(universe) - len(processed)),
         }
         update_progress(merged)
 
@@ -362,16 +417,24 @@ def run_full_screen(
         progress=update_progress_with_resume,
         on_result=save_result,
         kline_cache=kline_cache,
+        cooldown_seconds=cooldown_seconds,
+        max_cooldowns=max_cooldowns,
+        stop_check=stop_check,
     )
     all_selected = previous_selected
     for item in selected:
         if not any(s["code"] == item["code"] for s in all_selected):
             all_selected.append(item)
+    # 按量比分数统一排序后再截断,续跑合并时不丢旧入选
+    all_selected.sort(key=lambda s: s.get("score", 0), reverse=True)
     all_selected = all_selected[:top_n] if top_n is not None else all_selected
     write_generated(all_selected, generated_path)
+    # 全部处理完且没有限流失败残留,才算完成(失败的会被下一轮重试)
+    has_failed = any(s == "failed" for s in processed.values())
+    complete = len(processed) >= len(universe) and not has_failed
     if ckpt_path is not None:
         checkpoint["selected"] = all_selected
-        checkpoint["complete"] = len(processed) >= len(universe)
+        checkpoint["complete"] = complete
         checkpoint["updated_at"] = time.time()
         _write_checkpoint(ckpt_path, checkpoint)
     result = {
@@ -386,7 +449,7 @@ def run_full_screen(
         "resumed_done": resumed_done,
         "resumed_selected": resumed_selected,
         "remaining": max(0, len(universe) - len(processed)),
-        "complete": len(processed) >= len(universe),
+        "complete": complete,
         **latest_progress,
     }
     if history_path is not None:

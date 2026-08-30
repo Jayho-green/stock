@@ -43,11 +43,83 @@ def test_failure_recorded_and_unlocks():
 
     runner = ScreenRunner(boom)
     runner.start("zhixing")
+    # 异常进入重试等待,手动取消后立即结束
+    assert runner.cancel() is True
     _wait_idle(runner)
     st = runner.status()
     assert st["running"] is False
     assert st["last"]["ok"] is False
+    assert st["last"]["cancelled"] is True
     assert "数据源挂了" in st["last"]["error"]
+
+
+def test_cancel_returns_false_when_idle():
+    runner = ScreenRunner(lambda s: {"count": 1})
+    assert runner.cancel() is False
+
+
+def test_stop_check_passed_to_four_arg_runner():
+    seen = {}
+
+    def run(strategy, scope, progress, stop_check):
+        seen["strategy"] = strategy
+        seen["scope"] = scope
+        seen["stop_check"] = callable(stop_check)
+        progress({"done": 1})
+        return {"count": 1, "complete": True}
+
+    runner = ScreenRunner(run)
+    assert runner.start("zhixing", "hs300") is True
+    _wait_idle(runner)
+    st = runner.status()
+    assert seen == {"strategy": "zhixing", "scope": "hs300", "stop_check": True}
+    assert st["last"]["ok"] is True
+
+
+def test_cancel_during_run_marks_cancelled():
+    def run(strategy, scope, progress, stop_check):
+        progress({"done": 1, "total": 10})
+        while not stop_check():
+            time.sleep(0.01)
+        return {"count": 2, "done": 5, "total": 10, "stopped": True, "complete": False}
+
+    runner = ScreenRunner(run)
+    assert runner.start("zhixing") is True
+    time.sleep(0.1)
+    assert runner.cancel() is True
+    _wait_idle(runner)
+    st = runner.status()
+    assert st["running"] is False
+    assert st["last"]["ok"] is True
+    assert st["last"]["cancelled"] is True
+    assert st["last"]["count"] == 2
+
+
+def test_retry_continues_until_complete():
+    calls = {"n": 0}
+
+    def run(strategy, scope, progress, stop_check):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return {"count": 0, "complete": False, "done": 1, "total": 10}
+        return {"count": 4, "complete": True, "done": 10, "total": 10}
+
+    runner = ScreenRunner(run)
+    # 缩短重试等待,避免测试跑一分钟
+    import quant.web.screen_runner as sr
+
+    old_delay = sr.SCREEN_RETRY_DELAY
+    sr.SCREEN_RETRY_DELAY = 0.01
+    try:
+        assert runner.start("zhixing") is True
+        _wait_idle(runner, timeout=5)
+    finally:
+        sr.SCREEN_RETRY_DELAY = old_delay
+    st = runner.status()
+    assert st["running"] is False
+    assert calls["n"] == 3
+    assert st["last"]["ok"] is True
+    assert st["last"]["count"] == 4
 
 
 def test_progress_is_exposed_while_running():

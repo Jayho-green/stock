@@ -133,6 +133,12 @@ def create_app(
             return {"running": False, "strategy": None, "last": None}
         return screen_runner.status()
 
+    @app.post("/api/screen/cancel")
+    def screen_cancel():
+        if screen_runner is None:
+            return {"cancelled": False, "error": "选股功能未启用"}
+        return {"cancelled": screen_runner.cancel()}
+
     @app.get("/api/screen/history")
     def screen_history(limit: int = 20):
         from ..screen_history import read_history
@@ -188,6 +194,24 @@ def create_app(
     @app.get("/api/watchlist")
     def watchlist():
         return {"watchlist": service.get_watchlist()}
+
+    @app.get("/api/search")
+    def search_stocks(q: str, limit: int = 10):
+        return {"results": service.search_stocks(q, max(1, min(limit, 20)))}
+
+    @app.get("/api/band/market")
+    def band_market():
+        return service.get_band_market()
+
+    @app.get("/api/power/monitor")
+    def power_monitor(force: bool = False):
+        return service.get_power_monitor(force=force)
+
+    @app.get("/api/band/stock")
+    def band_stock(code: str, name: str | None = None):
+        if not code.isdigit():
+            raise HTTPException(status_code=400, detail="股票代码必须是6位数字")
+        return service.get_band_stock(code, name)
 
     @app.get("/api/signals")
     def signals(limit: int = 50):
@@ -284,9 +308,11 @@ def build_default_app() -> FastAPI:
         global_archive_path=DEFAULT_GLOBAL_ARCHIVE,
         news_cache_path=DEFAULT_NEWS_CACHE,
         news_events_path=DEFAULT_NEWS_EVENTS,
+        power_watch_path=ROOT / "config" / "power_watch.toml",
+        power_state_path=ROOT / "data" / "power_monitor.json",
     )
     runner = ScreenRunner(
-        lambda strategy, scope, progress: run_full_screen(
+        lambda strategy, scope, progress, stop_check: run_full_screen(
             source,
             cfg.screen,
             generated,
@@ -296,6 +322,7 @@ def build_default_app() -> FastAPI:
             checkpoint_path=checkpoint,
             history_path=history,
             kline_cache_path=DEFAULT_KLINE_CACHE,
+            stop_check=stop_check,
         )
     )
     from .amv0_service import Amv0Service

@@ -22,7 +22,7 @@ from ..indicators import add_kdj, add_ma, add_rsi, add_volume_features, add_zhix
 from ..signals.backtest_rules import BACKTEST_ENTRY_TIMING, BACKTEST_ONLY_RULES
 from ..signals.engine import run_rules
 from ..signals.monitor_rules import MONITOR_RULES
-from ..watchlist import add_watchlist_item
+from ..watchlist import add_watchlist_item, read_watchlist_file, write_watchlist_file
 from ..kline_cache import PostCloseKlineCache, effective_market_date
 
 
@@ -93,6 +93,98 @@ GLOBAL_QUOTE_TARGETS = [
 ]
 
 
+POWER_BOARD = "电力行业"
+POWER_WATCH_SIZE = 20
+# 东财板块接口不可用时的电力行业活跃股兜底名单
+POWER_FALLBACK = [
+    ("600011", "华能国际"), ("600027", "华电国际"), ("600795", "国电电力"),
+    ("601991", "大唐发电"), ("601985", "中国核电"), ("003816", "中国广核"),
+    ("600900", "长江电力"), ("600886", "国投电力"), ("600674", "川投能源"),
+    ("600023", "浙能电力"), ("600642", "申能股份"), ("600021", "上海电力"),
+    ("000883", "湖北能源"), ("000791", "甘肃能源"), ("002039", "黔源电力"),
+    ("600101", "明星电力"), ("600744", "华银电力"), ("600505", "西昌电力"),
+    ("600644", "乐山电力"), ("600969", "郴电国际"),
+]
+
+
+def _limit_up_threshold(code: str, name: str) -> float:
+    """A股涨停幅度%:主板10,创业板/科创板20,北交所30,ST 5。"""
+    if "ST" in name.upper():
+        return 5.0
+    if code.startswith(("30", "68")):
+        return 20.0
+    if code.startswith(("83", "87", "88", "43", "92")):
+        return 30.0
+    return 10.0
+
+
+def _in_trading_window(now: datetime) -> bool:
+    """工作日 9:25~15:00 视为交易时段(电力监控窗口)。"""
+    if now.weekday() >= 5:
+        return False
+    t = now.hour * 60 + now.minute
+    return 9 * 60 + 25 <= t <= 15 * 60
+
+
+def _temp_level(t: float) -> dict:
+    """波段战法市场温度分级:(涨-跌)/跌*100%。"""
+    if t < 0:
+        return {"level": "冰点", "tone": "bad", "action": "观望，不做波段"}
+    if t < 65:
+        return {"level": "不达标", "tone": "bad", "action": "观望，市场太弱"}
+    if t < 80:
+        return {"level": "及格", "tone": "ok", "action": "偏积极，可试探性关注"}
+    if t < 130:
+        return {"level": "强势", "tone": "good", "action": "积极，瞄准目标品种"}
+    if t <= 150:
+        return {"level": "较佳", "tone": "good", "action": "最佳状态，大胆做"}
+    return {"level": "冲顶", "tone": "warn", "action": "警惕冲顶，仅超短线或观望"}
+
+
+def _no_new_low_streak(lows: list[float]) -> int:
+    """从最新一根往前数,连续多少根低点未跌破此前所有低点(持平算未跌破)。"""
+    streak = 0
+    for i in range(len(lows) - 1, 0, -1):
+        if lows[i] >= min(lows[:i]):
+            streak += 1
+        else:
+            break
+    return streak
+
+
+def _band_index_check(bars: pd.DataFrame) -> dict:
+    """大盘(上证)体检:是否创新低、连续不创新低天数、位置。"""
+    if bars is None or len(bars) < 10:
+        return {}
+    lows = [float(v) for v in bars["low"].tolist()]
+    highs = [float(v) for v in bars["high"].tolist()]
+    closes = [float(v) for v in bars["close"].tolist()]
+    window = lows[-60:]
+    low60 = min(window)
+    high60 = max(highs[-60:])
+    last = closes[-1]
+    pos_pct = (last - low60) / (high60 - low60) * 100 if high60 > low60 else 50.0
+    if pos_pct <= 33:
+        position = "底部区域"
+    elif pos_pct <= 70:
+        position = "半山腰"
+    else:
+        position = "高位"
+    streak = _no_new_low_streak(lows[-60:])
+    made_new_low = len(lows) > 1 and lows[-1] < min(lows[:-1])
+    return {
+        "close": round(last, 2),
+        "low60": round(low60, 2),
+        "high60": round(high60, 2),
+        "position": position,
+        "pos_pct": round(pos_pct, 1),
+        "no_new_low_streak": streak,
+        "made_new_low": made_new_low,
+        "stable": streak >= 3,
+        "note": "连续3天不创新低=底部企稳" if streak >= 3 else ("今日创新低" if made_new_low else "尚未连续3天不创新低"),
+    }
+
+
 class DashboardService:
     def __init__(
         self,
@@ -108,6 +200,8 @@ class DashboardService:
         global_archive_path=None,
         news_cache_path=None,
         news_events_path=None,
+        power_watch_path=None,
+        power_state_path=None,
     ):
         self.source = source
         self.cfg = cfg
@@ -130,6 +224,10 @@ class DashboardService:
         self._cache = TTLCache(ttl, now)
         self._global_cache = TTLCache(7, now)
         self._long_cache = TTLCache(6 * 3600, now)
+        self._band_cache = TTLCache(300, now)
+        self.power_watch_path = Path(power_watch_path) if power_watch_path is not None else None
+        self.power_state_path = Path(power_state_path) if power_state_path is not None else None
+        self._power_state = self._load_power_state()
         if self.news_event_store is not None:
             cached_news = self._read_news_cache()
             if cached_news and cached_news.get("items"):
@@ -148,6 +246,325 @@ class DashboardService:
     def get_watchlist(self) -> list[dict]:
         """轻量返回自选名单,不拉行情。"""
         return self._active_watchlist()
+
+    def get_band_market(self) -> dict:
+        """波段战法·市场环境:温度=(涨-跌)/跌*100% + 上证大盘体检,缓存5分钟。"""
+        cached = self._band_cache.get("band_market")
+        if cached is not None:
+            return cached
+        result: dict[str, Any] = {"temperature": None, "index": None}
+        if hasattr(self.source, "get_market_activity"):
+            try:
+                act = self.source.get_market_activity()
+                if act.get("down"):
+                    t = (act["up"] - act["down"]) / act["down"] * 100
+                    result["temperature"] = {**act, "value": round(t, 1), **_temp_level(t)}
+            except Exception:
+                pass
+        if hasattr(self.source, "get_index_daily"):
+            try:
+                end = effective_market_date(self.clock)
+                start = end - timedelta(days=150)
+                bars = self.source.get_index_daily(
+                    "sh000001", start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+                )
+                result["index"] = _band_index_check(bars)
+            except Exception:
+                pass
+        self._band_cache.set("band_market", result)
+        return result
+
+    def get_band_stock(self, code: str, name: str | None = None) -> dict:
+        """波段战法·个股体检:向左看齐/超跌/不创新低/10日线。"""
+        code = str(code).zfill(6)
+        name = name or None
+        if name is None:
+            name = next(
+                (w.get("name") for w in self._active_watchlist() if w.get("code") == code),
+                code,
+            )
+        bars = self._daily_bars(code).tail(80).reset_index(drop=True)
+        if len(bars) < 20:
+            return {"code": code, "name": name, "checks": [], "verdict": {"title": "数据不足", "tone": "bad", "note": "日线不足20根"}}
+
+        lows = [float(v) for v in bars["low"].tolist()]
+        highs = [float(v) for v in bars["high"].tolist()]
+        closes = [float(v) for v in bars["close"].tolist()]
+        last = closes[-1]
+
+        min5 = min(lows[-5:])
+        dist = (last - min5) / min5 * 100 if min5 else 0.0
+        high60 = max(highs[-60:])
+        drawdown = (high60 - last) / high60 * 100 if high60 else 0.0
+        pct20 = (last - closes[-21]) / closes[-21] * 100 if len(closes) > 21 and closes[-21] else 0.0
+
+        streak = _no_new_low_streak(lows[-20:])
+        made_new_low = lows[-1] < min(lows[:-1])
+
+        ma10 = last - (sum(closes[-10:]) / 10)
+        above_streak = 0
+        for i in range(len(closes) - 1, 9, -1):
+            if closes[i] > sum(closes[i - 9 : i + 1]) / 10:
+                above_streak += 1
+            else:
+                break
+        below_streak = 0
+        for i in range(len(closes) - 1, 9, -1):
+            if closes[i] <= sum(closes[i - 9 : i + 1]) / 10:
+                below_streak += 1
+            else:
+                break
+        today_low_touch_ma10 = lows[-1] <= sum(closes[-10:]) / 10
+        first_pullback = above_streak >= 1 and closes[-1] >= sum(closes[-10:]) / 10 and today_low_touch_ma10
+
+        if first_pullback:
+            ma_state, ma_ok = "第一次回踩10日线", True
+        elif closes[-1] > sum(closes[-10:]) / 10:
+            ma_state, ma_ok = f"站上10日线({above_streak}日)", True
+        elif below_streak <= 3:
+            ma_state, ma_ok = f"跌破10日线({below_streak}日)", False
+        else:
+            ma_state, ma_ok = f"10日线下方({below_streak}日),回踩打法失效", False
+
+        checks = [
+            {
+                "key": "left_align",
+                "label": "向左看齐(距5日最低)",
+                "value": f"+{dist:.1f}%",
+                "detail": f"5日最低 {min5:.2f} · 现价 {last:.2f}",
+                "ok": dist <= 5,
+                "note": "≤5%即在最低价区间,胜率高" if dist <= 5 else "偏离最低价过远,等回落",
+            },
+            {
+                "key": "drawdown",
+                "label": "超跌幅度(距60日高点)",
+                "value": f"-{drawdown:.1f}%",
+                "detail": f"60日高点 {high60:.2f}",
+                "ok": drawdown >= 40,
+                "note": "达标(≥40%)" if drawdown >= 40 else "未达超跌条件(需40%~60%)",
+            },
+            {
+                "key": "no_new_low",
+                "label": "不创新低",
+                "value": f"连续{streak}日",
+                "detail": "今日创新低" if made_new_low else "今日未创新低",
+                "ok": streak >= 3 and not made_new_low,
+                "note": "≥3日=震荡企稳" if streak >= 3 else "震荡尚未企稳",
+            },
+            {
+                "key": "ma10",
+                "label": "10日线状态",
+                "value": ma_state,
+                "detail": f"MA10 {sum(closes[-10:]) / 10:.2f} · 偏离{ma10:+.2f}",
+                "ok": ma_ok,
+                "note": "第一次回踩=进场信号" if first_pullback else "",
+            },
+            {
+                "key": "pct20",
+                "label": "近20日涨跌",
+                "value": f"{pct20:+.1f}%",
+                "detail": "",
+                "ok": None,
+                "note": "",
+            },
+        ]
+
+        if made_new_low and drawdown >= 40:
+            verdict = {
+                "title": "暴跌创新低日",
+                "tone": "warn",
+                "note": "超跌+创新低:顶尖高手抄底玩法,普通投资者观望为主",
+            }
+        elif made_new_low:
+            verdict = {"title": "今日创新低", "tone": "bad", "note": "单边下跌通道,不做波段"}
+        elif first_pullback:
+            verdict = {
+                "title": "回踩10日线·进场信号",
+                "tone": "good",
+                "note": "上升趋势第一次回踩10日线,大胆进场(仅第一次)",
+            }
+        elif streak >= 3 and dist <= 5 and drawdown >= 40:
+            verdict = {
+                "title": "向左看齐·进场区",
+                "tone": "good",
+                "note": "震荡企稳+超跌+最低价附近:战法核心进场条件齐备",
+            }
+        elif streak >= 3 and dist <= 5:
+            verdict = {
+                "title": "最低价附近·可关注",
+                "tone": "ok",
+                "note": "震荡企稳+贴近5日最低,但超跌幅度不足40%",
+            }
+        elif below_streak > 3:
+            verdict = {"title": "10日线下方", "tone": "bad", "note": "超3日收于均线下,切换震荡打法或观望"}
+        else:
+            verdict = {"title": "观望", "tone": "ok", "note": "进场条件不齐:等回踩10日线或贴近平5日最低"}
+
+        return {
+            "code": code,
+            "name": name,
+            "price": round(last, 2),
+            "checks": checks,
+            "verdict": verdict,
+        }
+
+    # ---- 电力板块涨停监控 ----
+
+    def _load_power_state(self) -> dict:
+        state = {"date": "", "hits": {}}
+        if self.power_state_path is not None and self.power_state_path.exists():
+            try:
+                data = json.loads(self.power_state_path.read_text(encoding="utf-8"))
+                today = self.clock().strftime("%Y-%m-%d")
+                if data.get("date") == today:
+                    state = {"date": data["date"], "hits": data.get("hits") or {}}
+            except Exception:
+                pass
+        return state
+
+    def _save_power_state(self) -> None:
+        if self.power_state_path is None:
+            return
+        try:
+            self.power_state_path.parent.mkdir(parents=True, exist_ok=True)
+            self.power_state_path.write_text(
+                json.dumps(self._power_state, ensure_ascii=False), encoding="utf-8"
+            )
+        except Exception:
+            pass
+
+    def _power_watch_list(self, force: bool = False) -> list[dict]:
+        """电力板块活跃股名单:缓存→磁盘→东财板块成分(按成交额取前20,成功落盘)→内置兜底。"""
+        cached = self._long_cache.get("power_watch")
+        if cached is not None and not force:
+            return cached
+        watch: list[dict] = []
+        if self.power_watch_path is not None and self.power_watch_path.exists() and not force:
+            try:
+                watch = read_watchlist_file(self.power_watch_path)
+            except Exception:
+                watch = []
+        board_api = getattr(self.source, "get_industry_board_cons", None)
+        if not watch and callable(board_api):
+            try:
+                df = self.source.get_industry_board_cons(POWER_BOARD)
+                df = df[df["name"].astype(str).str.upper().str.contains("ST") == False]
+                df = df.sort_values("amount", ascending=False).head(POWER_WATCH_SIZE)
+                watch = [
+                    {"code": str(c).zfill(6), "name": str(n)}
+                    for c, n in zip(df["code"], df["name"])
+                ]
+                if watch and self.power_watch_path is not None:
+                    try:
+                        write_watchlist_file(watch, self.power_watch_path)
+                    except Exception:
+                        pass
+            except Exception:
+                watch = []
+        if not watch:
+            watch = [{"code": c, "name": n} for c, n in POWER_FALLBACK]
+        self._long_cache.set("power_watch", watch)
+        return watch
+
+    def _power_realtime(self, codes: list[str]) -> dict:
+        """名单股票实时行情 {code: {name,price,pct}},30秒缓存。"""
+        key = "power_realtime"
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+        quotes: dict[str, dict] = {}
+        realtime_api = getattr(self.source, "get_realtime_board", None)
+        if callable(realtime_api):
+            try:
+                df = self.source.get_realtime_board(codes)
+                for _, row in df.iterrows():
+                    quotes[str(row["code"]).zfill(6)] = {
+                        "name": str(row.get("name", "")),
+                        "price": float(row.get("price") or 0),
+                        "pct": float(row.get("pct") or 0),
+                    }
+            except Exception:
+                pass
+        self._cache.set(key, quotes)
+        return quotes
+
+    def get_power_monitor(self, force: bool = False) -> dict:
+        """电力板块监控:活跃名单 + 当日涨停检测(开盘即盯,涨停记录当日保留,炸板标注)。"""
+        if force:
+            self._cache.set("power_realtime", None)
+        watch = self._power_watch_list(force=force)
+        now = self.clock()
+        trading = _in_trading_window(now)
+        today = now.strftime("%Y-%m-%d")
+        if self._power_state["date"] != today:
+            self._power_state = {"date": today, "hits": {}}
+            self._save_power_state()
+
+        if trading and watch:
+            quotes = self._power_realtime([w["code"] for w in watch])
+            if quotes:
+                now_s = now.strftime("%H:%M")
+                changed = False
+                for code, q in quotes.items():
+                    name = q["name"]
+                    if q["pct"] >= _limit_up_threshold(code, name) - 0.12:
+                        hit = self._power_state["hits"].get(code)
+                        if hit is None:
+                            self._power_state["hits"][code] = {
+                                "code": code,
+                                "name": name,
+                                "price": q["price"],
+                                "pct": q["pct"],
+                                "time": now_s,
+                                "broken": False,
+                            }
+                            changed = True
+                        else:
+                            hit.update(price=q["price"], pct=q["pct"], broken=False)
+                            changed = True
+                    elif code in self._power_state["hits"]:
+                        hit = self._power_state["hits"][code]
+                        if not hit.get("broken"):
+                            hit["broken"] = True
+                            hit["pct"] = q["pct"]
+                            changed = True
+                if changed:
+                    self._save_power_state()
+
+        hits = list(self._power_state["hits"].values())
+        return {
+            "watch": watch,
+            "hits": hits,
+            "hit": bool(hits),
+            "trading": trading,
+            "updated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+        }
+
+    def search_stocks(self, q: str, limit: int = 10) -> list[dict]:
+        """按代码前缀或名称子串搜索全A股票,返回 [{code,name}],表缓存6小时。"""
+        query = (q or "").strip()
+        if not query or not hasattr(self.source, "get_all_code_name"):
+            return []
+        stock_universe = self._long_cache.get("stock_universe")
+        if stock_universe is None:
+            try:
+                stock_universe = self.source.get_all_code_name().to_dict("records")
+            except Exception:
+                stock_universe = []
+            self._long_cache.set("stock_universe", stock_universe)
+        qlower = query.lower()
+        code_hits: list[dict] = []
+        name_hits: list[dict] = []
+        for row in stock_universe:
+            code = str(row.get("code", "")).zfill(6)
+            name = str(row.get("name", ""))
+            if code.startswith(query):
+                code_hits.append({"code": code, "name": name})
+            elif qlower in name.lower():
+                name_hits.append({"code": code, "name": name})
+            if len(code_hits) >= limit and len(name_hits) >= limit:
+                break
+        return (code_hits + name_hits)[:limit]
 
     def _minute_bars(self, code: str) -> pd.DataFrame:
         key = ("minute_bars", code)

@@ -286,6 +286,33 @@ def test_add_watchlist_uses_resolved_name(tmp_path):
     assert ret["item"] == {"code": "600000", "name": "浦发银行"}
 
 
+def test_search_stocks_by_name_and_code():
+    class CountingSource(FakeSource):
+        def __init__(self, bars):
+            super().__init__(bars)
+            self.universe_calls = 0
+
+        def get_all_code_name(self):
+            self.universe_calls += 1
+            return pd.DataFrame(
+                [
+                    {"code": "000001", "name": "平安银行"},
+                    {"code": "600000", "name": "浦发银行"},
+                    {"code": "600519", "name": "贵州茅台"},
+                ]
+            )
+
+    src = CountingSource(_bars(list(range(1, 30))))
+    svc = DashboardService(src, _cfg())
+    by_name = svc.search_stocks("银行")
+    assert [r["code"] for r in by_name] == ["000001", "600000"]
+    by_code = svc.search_stocks("6005")
+    assert by_code == [{"code": "600519", "name": "贵州茅台"}]
+    assert svc.search_stocks("  ") == []
+    assert svc.search_stocks("不存在XYZ") == []
+    assert src.universe_calls == 1  # 代码名称表走长缓存,不重复拉取
+
+
 def test_get_news_uses_full_market_with_watchlist_markers(monkeypatch):
     captured = {}
 
