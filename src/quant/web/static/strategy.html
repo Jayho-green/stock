@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>0AMV 板块轮动策略回测</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23101719'/%3E%3Cpath d='M5 24 L12 16 L18 20 L27 7' stroke='%2335a8a4' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/static/amv0.css?v=3" />
+  <link rel="stylesheet" href="/static/strategy.css?v=1" />
+  <script src="/static/echarts.min.js?v=5.6.0"></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <p class="kicker">指南针活跃市值 · 板块轮动</p>
+        <h1>0AMV 策略回测 <span class="period">2020-01 ~ 2026-08</span></h1>
+        <p class="formula">入场：0AMV 两日累计涨幅 &gt; 4% 且两天均为红K → 选资金流入前 2 板块 → 涨多的 40% / 涨少的 60%</p>
+      </div>
+      <div class="top-actions">
+        <span id="status-pill" class="pill"><i></i>加载中</span>
+        <a href="/amv0" class="nav-link">0AMV 面板</a>
+        <a href="/" class="nav-link">A股面板</a>
+      </div>
+    </header>
+
+    <div class="warn" id="caveat">
+      <b>先看这里：</b>2020–2026 的<b>板块资金流历史并不存在</b>（同花顺只提供快照）。选板块这一步用的是
+      <b>主动买盘估算</b>代理 <code>成交额×(2收−高−低)/(高−低)</code>。换成另两种口径，累计收益会
+      <b>腰斩</b>（见下方敏感性表）——说明这一步没有稳定信息，下面的收益数字<b>不能当作策略的真实表现</b>。
+      另：未计交易成本（ETF 双边约 0.1–0.2%），分批减仓的 S1/S3 受影响更大。
+    </div>
+
+    <section class="tiles" id="tiles" aria-label="策略概览"></section>
+
+    <article class="panel">
+      <div class="panel-head">
+        <div><h2>资金曲线</h2><p>按轮次复利，横轴为入场日期。三套出场方案对比。</p></div>
+        <div class="legend" id="eq-legend"></div>
+      </div>
+      <div id="equity-chart"></div>
+    </article>
+
+    <div class="split2">
+      <article class="panel">
+        <div class="panel-head"><div><h2>分年度收益</h2><p>收益极度集中在 2020 与 2024</p></div></div>
+        <div id="yearly-chart"></div>
+      </article>
+      <article class="panel">
+        <div class="panel-head"><div><h2>板块贡献</h2><p>按腿累计贡献（权重加权）</p></div></div>
+        <div id="sector-chart"></div>
+      </article>
+    </div>
+
+    <article class="panel">
+      <div class="panel-head">
+        <div><h2>逐轮盈亏</h2><p id="rounds-note">每根柱为一轮。点击柱子查看两条腿明细。</p></div>
+        <div class="legend">
+          <span><i class="box" style="background:var(--up)"></i>盈利</span>
+          <span><i class="box" style="background:var(--down)"></i>亏损</span>
+        </div>
+      </div>
+      <div id="rounds-chart"></div>
+    </article>
+
+    <div class="split2">
+      <article class="panel">
+        <div class="panel-head"><div><h2 id="loss-title">亏损轮次</h2><p>按时间排序</p></div></div>
+        <div class="tbl-wrap"><table id="loss-table"><thead><tr>
+          <th>入场</th><th>出场</th><th>持有</th><th>40% 腿</th><th>收益</th><th>60% 腿</th><th>收益</th><th>轮收益</th>
+        </tr></thead><tbody></tbody></table></div>
+      </article>
+      <article class="panel">
+        <div class="panel-head"><div><h2 id="win-title">盈利轮次</h2><p>按时间排序</p></div></div>
+        <div class="tbl-wrap"><table id="win-table"><thead><tr>
+          <th>入场</th><th>出场</th><th>持有</th><th>40% 腿</th><th>收益</th><th>60% 腿</th><th>收益</th><th>轮收益</th>
+        </tr></thead><tbody></tbody></table></div>
+      </article>
+    </div>
+
+    <article class="panel">
+      <div class="panel-head">
+        <div><h2>资金流口径敏感性</h2>
+          <p>同样的入场与出场规则，只改「怎么定义资金流入最多的板块」。差异越大，说明这一步越不可靠。</p></div>
+      </div>
+      <div class="tbl-wrap"><table id="sens-table"><thead><tr>
+        <th>资金流口径</th><th>策略</th><th>轮数</th><th>每轮均值</th><th>中位</th><th>胜率</th><th>累计</th><th>年化</th><th>最大回撤</th>
+      </tr></thead><tbody></tbody></table></div>
+    </article>
+  </main>
+  <div class="tip" id="tip"></div>
+  <script src="/static/strategy.js?v=1"></script>
+</body>
+</html>

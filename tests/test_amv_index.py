@@ -79,3 +79,68 @@ def test_industry_map_targets_exist_in_universe():
     for industry, etfs in INDUSTRY_TO_ETF.items():
         for code in etfs:
             assert code in UNIVERSE, f"{industry} 映射到了不存在的 ETF {code}"
+
+
+def _fake_amv(n=60):
+    """构造 0AMV 日线:第 10-11 天连续两根红K且两日累计>4%,之后出现阴线。"""
+    import numpy as np
+    close = np.linspace(100.0, 110.0, n)
+    close[10] = 104.0
+    close[11] = 109.5          # 相对 close[9] 累计约 +9%
+    close[20] = close[19] - 3.0    # 第 20 天真跌(收<昨收),跌幅>0
+    op = close - 0.5           # 默认红K(收>开)
+    op[20] = close[20] + 2.0   # 第 20 天造一根大阴线
+    op[25] = close[25] + 0.3   # 第 25 天:实体阴线但收>昨收 -> 跌幅记 0
+    op[30] = close[30] + 0.3
+    return pd.DataFrame({
+        "trade_date": pd.bdate_range("2021-01-04", periods=n).strftime("%Y%m%d").astype(int),
+        "open_raw": (op * 10).astype(int), "close_raw": (close * 10).astype(int),
+        "high_raw": ((close + 1) * 10).astype(int), "low_raw": ((close - 1) * 10).astype(int),
+        "amount_raw": [1_000_000] * n, "is_final": [1] * n,
+    })
+
+
+def test_load_amv_scales_and_flags(tmp_path):
+    import sqlite3
+    from quant.amv_strategy import load_amv
+
+    con = sqlite3.connect(":memory:")
+    _fake_amv().to_sql("period_bars", con, index=False)
+    con.execute("ALTER TABLE period_bars ADD COLUMN period TEXT")
+    con.execute("UPDATE period_bars SET period='day'")
+    d = load_amv(con)
+    assert d.close.iloc[0] == pytest.approx(100.0)     # raw/10
+    assert d.signal.any()
+    assert d.is_yin.iloc[20]                            # 第20天是阴线且真跌
+    assert d.drop_pct.iloc[20] > 0
+    # 跳空高开后收阴:是阴线,但收盘仍高于昨收 -> 按本模块约定跌幅记 0
+    assert d.is_yin.iloc[25] and d.drop_pct.iloc[25] == 0
+
+
+def test_cut_fraction_matches_three_strategies():
+    from quant.amv_strategy import _cut_fraction
+
+    # S2:任何阴线全清
+    assert _cut_fraction("S2", 0.2, 0) == 1.0
+    # S3:首阴一半,次阴清完
+    assert _cut_fraction("S3", 0.2, 0) == 0.5
+    assert _cut_fraction("S3", 0.2, 1) == 1.0
+    # S1:按首根阴线跌幅分档
+    assert _cut_fraction("S1", 2.0, 0) == 1.0     # >1.3 全清
+    assert _cut_fraction("S1", 0.9, 0) == 0.5     # 0.5~1.3 清一半
+    assert _cut_fraction("S1", 0.3, 0) == 0.3     # <0.5 减 30%
+    assert _cut_fraction("S1", 0.3, 1) == 1.0     # 第二根阴线清完
+
+
+def test_backtest_excludes_broad_index_sectors():
+    from quant.amv_strategy import EXCLUDE_SECTORS, prepare_panel
+
+    panel = pd.DataFrame({
+        "date": ["2021-01-04"] * 2, "open": [1.0, 1.0], "high": [1.1, 1.1],
+        "low": [0.9, 0.9], "close": [1.05, 1.05], "amount": [100.0, 100.0],
+        "code": ["510300", "512480"], "name": ["沪深300ETF", "半导体ETF"],
+        "sector": ["宽基", "科技"],
+    })
+    out = prepare_panel(panel)
+    assert "宽基" in EXCLUDE_SECTORS
+    assert set(out.code) == {"512480"}

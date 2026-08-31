@@ -37,7 +37,7 @@ def create_app(
     @app.middleware("http")
     async def no_cache(request, call_next):
         resp = await call_next(request)
-        if request.url.path in ("/", "/lhb", "/korea", "/news-window", "/amv0") or request.url.path.startswith("/static"):
+        if request.url.path in ("/", "/lhb", "/korea", "/news-window", "/amv0", "/strategy") or request.url.path.startswith("/static"):
             resp.headers["Cache-Control"] = "no-store"
         return resp
 
@@ -261,6 +261,16 @@ def create_app(
             raise HTTPException(status_code=503, detail="未配置 0AMV 服务")
         return {"started": amv0_service.refresh_async(), "status": amv0_service.status()}
 
+    @app.get("/api/amv-strategy")
+    def amv_strategy():
+        path = ROOT / "data" / "amv_strategy" / "results.json"
+        if not path.exists():
+            raise HTTPException(
+                status_code=503,
+                detail="尚无回测结果，请先运行 scripts/run_amv_strategy.py",
+            )
+        return FileResponse(path, media_type="application/json")
+
     @app.get("/")
     def index():
         return FileResponse(STATIC_DIR / "index.html")
@@ -268,6 +278,10 @@ def create_app(
     @app.get("/amv0")
     def amv0_page():
         return FileResponse(STATIC_DIR / "amv0.html")
+
+    @app.get("/strategy")
+    def strategy_page():
+        return FileResponse(STATIC_DIR / "strategy.html")
 
     @app.get("/lhb")
     def lhb_page():

@@ -1,0 +1,80 @@
+/* 0AMV 策略回测页 —— 复用 amv0.css 的暗色变量,只加本页需要的 */
+:root {
+  --s1: #b8873a;   /* 三套出场方案的分类色,已过 CVD/对比度校验(dark, surface #101719) */
+  --s2: #35a8a4;
+  --s3: #8264e6;
+}
+
+.period {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 400;
+  letter-spacing: 0;
+  margin-left: 6px;
+}
+
+.warn {
+  background: rgba(240, 91, 104, 0.07);
+  border: 1px solid rgba(240, 91, 104, 0.28);
+  border-left: 3px solid var(--up);
+  border-radius: 10px;
+  padding: 13px 16px;
+  margin: 18px 0 4px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.warn b { color: var(--text); }
+.warn code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+
+.split2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+  gap: 16px;
+}
+.split2 .panel { margin-top: 16px; }
+
+#equity-chart { width: 100%; height: 360px; }
+#yearly-chart, #sector-chart { width: 100%; height: 330px; }
+#rounds-chart { width: 100%; height: 300px; }
+
+.tbl-wrap { max-height: 460px; overflow: auto; }
+.tbl-wrap table { font-size: 12px; }
+.tbl-wrap thead th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  z-index: 1;
+  cursor: default;
+}
+
+/* 策略切换 chip */
+.chips { display: flex; gap: 7px; flex-wrap: wrap; }
+.chip {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 5px 13px;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.chip:hover { color: var(--text); }
+.chip.on { color: var(--text); border-color: currentColor; }
+.chip.on[data-s="S1"] { color: var(--s1); }
+.chip.on[data-s="S2"] { color: var(--s2); }
+.chip.on[data-s="S3"] { color: var(--s3); }
+
+.tile .v.pos { color: var(--up); }
+.tile .v.neg { color: var(--down); }
+td.pos { color: var(--up); }
+td.neg { color: var(--down); }
+tbody tr.big { background: rgba(242, 193, 78, 0.07); }

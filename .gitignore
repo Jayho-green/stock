@@ -27,3 +27,6 @@ config/power_watch.toml
 .playwright-mcp/
 .DS_Store
 *.log
+
+# 指南针专有行情数据(0AMV),仅本机使用,不入库
+market.sqlite
